@@ -20,6 +20,7 @@
   }
   .btnRow {
     position:absolute; inset:auto 0 10px 0; display:flex; justify-content:center; gap:12px; pointer-events:auto;
+    flex-wrap: wrap;
   }
   .btn {
     background: rgba(255,255,255,.08); backdrop-filter: blur(6px);
@@ -31,6 +32,20 @@
   .mobileJump {
     position:absolute; right:10px; bottom:10px; pointer-events:auto;
   }
+  .panel {
+    background: rgba(10,20,26,.85); border:1px solid rgba(255,255,255,.15);
+    border-radius:16px; padding:16px; max-width:min(92vw, 520px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  .panel h2 { margin:.3rem 0 0.6rem 0; font-size:clamp(18px,3.6vw,24px); }
+  .row { display:flex; justify-content:space-between; gap:16px; margin:.15rem 0; }
+  .muted { opacity:.75; }
+  .inputRow { display:flex; gap:8px; justify-content:center; margin-top:10px; }
+  input[type="text"]{
+    background: rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+    color:var(--ui); padding:8px 10px; border-radius:10px; width:120px; font-weight:700; text-transform:uppercase;
+  }
+  .scoresBtnRow { display:flex; justify-content:center; gap:10px; margin-top:10px; }
   @media (hover:none) and (pointer:coarse){
     .mobileJump .btn { padding:14px 18px; font-size:18px; }
   }
@@ -40,22 +55,28 @@
 <div class="wrap">
   <div style="position:relative">
     <canvas id="game" width="900" height="400" aria-label="Whitetail Runner"></canvas>
+
     <div class="hud">
       <div id="score">Score: 0</div>
       <div id="hiscore">Best: 0</div>
     </div>
+
+    <!-- Center overlay container (title, pause, game over, scoreboard) -->
     <div class="centerMsg" id="centerMsg">
-      <div>
+      <div class="panel" id="panelContent">
         <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
-        <p style="opacity:.9;margin:.25rem 0">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
-        <p style="opacity:.7;margin:.25rem 0">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+        <p class="muted" style="margin:.25rem 0">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
+        <p class="muted" style="margin:.25rem 0">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
         <div class="btnRow">
           <button class="btn" id="startBtn">Start</button>
           <button class="btn" id="pauseBtn">Pause</button>
           <button class="btn" id="restartBtn">Restart</button>
+          <button class="btn" id="scoresBtn">Scores</button>
         </div>
       </div>
     </div>
+
+    <!-- Mobile jump button -->
     <div class="mobileJump">
       <button class="btn" id="jumpBtn">Jump</button>
     </div>
@@ -67,43 +88,54 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
-  // UI
+  // UI refs
   const scoreEl = document.getElementById('score');
   const hiscoreEl = document.getElementById('hiscore');
   const centerMsg = document.getElementById('centerMsg');
+  const panelContent = document.getElementById('panelContent');
+
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
   const restartBtn = document.getElementById('restartBtn');
+  const scoresBtn = document.getElementById('scoresBtn');
   const jumpBtn = document.getElementById('jumpBtn');
 
-  // Persistent high score
+  // Storage keys
   const HS_KEY = 'whitetail_hiscore_v1';
+  const SCORES_KEY = 'whitetail_scoreboard_v1';
+
+  // Load persistent data
   let hiScore = Number(localStorage.getItem(HS_KEY) || 0);
   hiscoreEl.textContent = 'Best: ' + hiScore;
+
+  function loadScores(){
+    try { return JSON.parse(localStorage.getItem(SCORES_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function saveScores(arr){
+    localStorage.setItem(SCORES_KEY, JSON.stringify(arr));
+  }
+  function addScore(name, score){
+    const scores = loadScores();
+    scores.push({ name: (name||'YOU').slice(0,8).toUpperCase(), score, date: Date.now() });
+    scores.sort((a,b) => b.score - a.score);
+    saveScores(scores.slice(0, 10)); // keep top 10
+  }
 
   // Game state
   const W = canvas.width, H = canvas.height;
   const groundY = H - 64;
   let running = false, paused = false, gameOver = false;
-  let tPrev = 0, score = 0, speed = 280, spawnTimer = 0, difficulty = 0;
+  let tPrev = 0, score = 0, speed = 280, spawnTimer = 0;
 
-  // Player (whitetail deer) parameters
-  const deer = {
-    x: 90,
-    y: groundY - 40,
-    w: 58, h: 40,
-    vy: 0,
-    onGround: true
-  };
+  const deer = { x: 90, y: groundY - 40, w: 58, h: 40, vy: 0, onGround: true };
+  const obstacles = [];
 
-  // Obstacles list
-  const obstacles = []; // {type:'arrow'|'bullet', x,y,w,h, vx, extras...}
-
-  // Input
+  // Input: jump
   function jump() {
     if (!running || paused) return;
     if (deer.onGround) {
-      deer.vy = -520; // jump impulse
+      deer.vy = -520;
       deer.onGround = false;
     }
   }
@@ -117,58 +149,146 @@
 
   canvas.addEventListener('pointerdown', jump, {passive:true});
   jumpBtn.addEventListener('click', jump);
+
   startBtn.addEventListener('click', () => startGame(!gameOver));
   pauseBtn.addEventListener('click', togglePause);
   restartBtn.addEventListener('click', () => startGame(true));
+  scoresBtn.addEventListener('click', showScores);
 
   function togglePause(){
     if (!running || gameOver) return;
     paused = !paused;
-    centerMsg.style.display = paused ? 'grid' : 'none';
-    centerMsg.querySelector('h1').textContent = 'Paused';
+    if (paused) {
+      showPause();
+    } else {
+      hideCenter();
+    }
   }
+
+  function showPause(){
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Paused</h1>
+      <p class="muted">Current Score: <b>${score}</b></p>
+      <div class="btnRow">
+        <button class="btn" id="resumeBtn">Resume</button>
+        <button class="btn" id="restartBtn2">Restart</button>
+        <button class="btn" id="scoresBtn2">Scores</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    // wire buttons
+    panelContent.querySelector('#resumeBtn').onclick = () => { paused = false; hideCenter(); };
+    panelContent.querySelector('#restartBtn2').onclick = () => startGame(true);
+    panelContent.querySelector('#scoresBtn2').onclick = showScores;
+  }
+
+  function showTitle(){
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
+      <p class="muted">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
+      <p class="muted">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+      <div class="btnRow">
+        <button class="btn" id="startBtnX">Start</button>
+        <button class="btn" id="restartBtnX">Restart</button>
+        <button class="btn" id="scoresBtnX">Scores</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    panelContent.querySelector('#startBtnX').onclick = () => startGame(!gameOver);
+    panelContent.querySelector('#restartBtnX').onclick = () => startGame(true);
+    panelContent.querySelector('#scoresBtnX').onclick = showScores;
+  }
+
+  function showScores(){
+    const scores = loadScores();
+    const rows = scores.length ? scores.map((s,i) =>
+      `<div class="row"><div>#${i+1}. <b>${s.name}</b></div><div>${s.score}</div></div>`
+    ).join('') : `<p class="muted" style="text-align:center;margin:.5rem 0">No scores yet — be the first!</p>`;
+
+    panelContent.innerHTML = `
+      <h2>High Score Board (Top 10)</h2>
+      <div class="row"><div class="muted">Best Personal</div><div><b>${hiScore}</b></div></div>
+      <hr style="border:0;border-top:1px solid rgba(255,255,255,.15); margin:8px 0 12px 0;">
+      <div>${rows}</div>
+      <div class="scoresBtnRow">
+        <button class="btn" id="backBtn">Back</button>
+        <button class="btn" id="clearBtn">Clear Scores</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    const backBtn = panelContent.querySelector('#backBtn');
+    const clearBtn = panelContent.querySelector('#clearBtn');
+    backBtn.onclick = showTitle;
+    clearBtn.onclick = () => {
+      localStorage.removeItem(SCORES_KEY);
+      showScores();
+    };
+  }
+
+  function hideCenter(){ centerMsg.style.display = 'none'; }
 
   function startGame(reset=false){
     if (reset) {
       obstacles.length = 0;
-      score = 0; speed = 280; spawnTimer = 0; difficulty = 0;
+      score = 0; speed = 280; spawnTimer = 0;
       deer.x = 90; deer.y = groundY - 40; deer.vy = 0; deer.onGround = true;
       gameOver = false;
     }
     running = true; paused = false;
-    centerMsg.style.display = 'none';
+    hideCenter();
     tPrev = performance.now();
     requestAnimationFrame(loop);
   }
 
   function endGame(){
     gameOver = true; running = false;
+
+    // Update personal best
     if (score > hiScore) {
       hiScore = score;
       localStorage.setItem(HS_KEY, String(hiScore));
       hiscoreEl.textContent = 'Best: ' + hiScore;
     }
+
+    // Game Over + name input to save score
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Game Over</h1>
+      <p class="muted">Score: <b>${score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; Best: <b>${hiScore}</b></p>
+      <div class="inputRow">
+        <input id="nameInput" type="text" maxlength="8" value="YOU" aria-label="Your initials or name" />
+        <button class="btn" id="saveBtn">Save Score</button>
+      </div>
+      <div class="btnRow" style="position:static;margin-top:10px">
+        <button class="btn" id="restartBtnG">Restart</button>
+        <button class="btn" id="scoresBtnG">Scores</button>
+      </div>
+    `;
     centerMsg.style.display = 'grid';
-    centerMsg.querySelector('h1').textContent = 'Game Over';
+
+    const nameInput = panelContent.querySelector('#nameInput');
+    nameInput.select();
+
+    panelContent.querySelector('#saveBtn').onclick = () => {
+      addScore(nameInput.value || 'YOU', score);
+      showScores();
+    };
+    panelContent.querySelector('#restartBtnG').onclick = () => startGame(true);
+    panelContent.querySelector('#scoresBtnG').onclick = showScores;
   }
 
   // Helpers
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
-  // Spawning obstacles (arrows & bullets)
   function spawnObstacle(){
-    // Increase difficulty gradually
-    difficulty += 0.02;
     const type = Math.random() < 0.6 ? 'arrow' : 'bullet';
     if (type === 'arrow'){
       const h = 10, w = 36;
       obstacles.push({
         type, x: W + 10, y: groundY - 18, w, h, vx: -(speed + rand(0, 40)),
-        tip: 10 // triangle tip length
+        tip: 10
       });
     } else {
       const size = 12;
-      // bullets vary in height slightly to keep you honest
       const y = groundY - 18 - rand(0, 10);
       obstacles.push({
         type, x: W + 10, y, w:size, h:size, r:size/2, vx: -(speed + rand(60, 120))
@@ -176,18 +296,16 @@
     }
   }
 
-  // Collision
   function aabb(a,b){
     return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
   }
 
   // Drawing
   function drawGround(){
-    // ground strip
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
     ctx.fillRect(0, groundY, W, H - groundY);
 
-    // simple parallax scrub (bush silhouettes)
+    // simple parallax shrubs
     const t = performance.now() * 0.0002;
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#16313d';
@@ -200,23 +318,18 @@
   }
 
   function drawDeer(){
-    // Body
     ctx.save();
-    ctx.translate(0,0);
     ctx.fillStyle = '#c79b6d'; // body
     ctx.fillRect(deer.x, deer.y, deer.w, deer.h);
 
-    // Neck / head (simple shape)
-    ctx.fillStyle = '#d8b387';
-    ctx.fillRect(deer.x + deer.w - 22, deer.y - 12, 22, 22); // head
-    ctx.fillRect(deer.x + deer.w - 28, deer.y, 10, 16); // neck
+    ctx.fillStyle = '#d8b387'; // head & neck
+    ctx.fillRect(deer.x + deer.w - 22, deer.y - 12, 22, 22);
+    ctx.fillRect(deer.x + deer.w - 28, deer.y, 10, 16);
 
-    // Eye
-    ctx.fillStyle = '#0b1b24';
+    ctx.fillStyle = '#0b1b24'; // eye
     ctx.fillRect(deer.x + deer.w - 10, deer.y - 4, 3, 3);
 
-    // Antlers
-    ctx.strokeStyle = '#f2e7c9';
+    ctx.strokeStyle = '#f2e7c9'; // antlers
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(deer.x + deer.w - 14, deer.y - 12);
@@ -225,7 +338,7 @@
     ctx.lineTo(deer.x + deer.w - 22, deer.y - 22);
     ctx.stroke();
 
-    // Legs (simple motion suggestion)
+    // legs
     const legY = deer.y + deer.h;
     ctx.strokeStyle = '#a77f52';
     ctx.lineWidth = 4;
@@ -234,33 +347,27 @@
       const lx = deer.x + 6 + i*12 + (i%2===0 ? swing : -swing);
       ctx.beginPath(); ctx.moveTo(lx, legY-6); ctx.lineTo(lx, legY+8); ctx.stroke();
     }
-
     ctx.restore();
   }
 
   function drawObstacle(o){
     if (o.type === 'arrow'){
-      // Shaft
-      ctx.fillStyle = '#d7dadb';
+      ctx.fillStyle = '#d7dadb'; // shaft
       ctx.fillRect(o.x, o.y, o.w, o.h);
-      // Tip (triangle)
-      ctx.fillStyle = '#b0b7bc';
+      ctx.fillStyle = '#b0b7bc'; // tip
       ctx.beginPath();
       ctx.moveTo(o.x + o.w, o.y + o.h/2);
       ctx.lineTo(o.x + o.w + o.tip, o.y);
       ctx.lineTo(o.x + o.w + o.tip, o.y + o.h);
       ctx.closePath();
       ctx.fill();
-      // Fletching
-      ctx.fillStyle = '#76d7ea';
+      ctx.fillStyle = '#76d7ea'; // fletching
       ctx.fillRect(o.x - 6, o.y - 2, 6, o.h + 4);
     } else {
-      // Bullet as circle
-      ctx.fillStyle = '#c0c7cc';
+      ctx.fillStyle = '#c0c7cc'; // bullet
       ctx.beginPath();
       ctx.arc(o.x + o.r, o.y + o.r, o.r, 0, Math.PI*2);
       ctx.fill();
-      // small glare
       ctx.fillStyle = 'rgba(255,255,255,.35)';
       ctx.beginPath();
       ctx.arc(o.x + o.r - 3, o.y + o.r - 3, o.r*0.5, 0, Math.PI*2);
@@ -272,17 +379,17 @@
     if (paused || !running) return;
 
     // Speed ramp
-    speed += 6 * dt; // gradual ramp
-    // Spawn logic
+    speed += 6 * dt;
+
+    // Spawning
     spawnTimer -= dt;
     if (spawnTimer <= 0){
       spawnObstacle();
-      // Next spawn based on speed & randomness
-      const baseGap = Math.max(0.7, 1.6 - speed/600); // tighter as speed rises
+      const baseGap = Math.max(0.7, 1.6 - speed/600);
       spawnTimer = baseGap + Math.random()*0.5;
     }
 
-    // Gravity
+    // Gravity & movement
     deer.vy += 1600 * dt;
     deer.y += deer.vy * dt;
     if (deer.y + deer.h >= groundY){
@@ -302,7 +409,6 @@
     score += Math.floor(200 * dt);
     scoreEl.textContent = 'Score: ' + score;
 
-    // AABB checks (convert bullet circle to aabb for simplicity)
     const deerBox = {x:deer.x, y:deer.y, w:deer.w, h:deer.h};
     for (const o of obstacles){
       if (o.type === 'bullet'){
@@ -316,10 +422,9 @@
   }
 
   function draw(){
-    // Clear
     ctx.clearRect(0,0,W,H);
 
-    // Sky stars (subtle)
+    // subtle sky stars
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#bde7f2';
     for (let i=0;i<40;i++){
@@ -331,16 +436,12 @@
 
     drawGround();
     drawDeer();
-
     for (const o of obstacles) drawObstacle(o);
-
-    // Flash border on near-hit (optional)
-    // (simple cue when many obstacles exist)
   }
 
   function loop(tNow){
     if (!running){ return; }
-    const dt = Math.min((tNow - tPrev)/1000, 0.033); // cap dt for stability
+    const dt = Math.min((tNow - tPrev)/1000, 0.033);
     tPrev = tNow;
 
     update(dt);
@@ -349,7 +450,8 @@
     if (!gameOver) requestAnimationFrame(loop);
   }
 
-  // Initialize with title screen visible
+  // Show title on load
+  showTitle();
 })();
 </script>
 </body>
