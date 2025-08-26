@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Whitetail Runner</title>
+<style>
+  :root { --bg:#0b1b24; --ground:#25404d; --ui:#e6f2f7; --accent:#76d7ea; --hit:#ff6978; }
+  html,body { height:100%; margin:0; background:var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+  .wrap { display:grid; place-items:center; height:100%; }
+  canvas { width: min(95vw, 1000px); aspect-ratio: 9 / 4; background: linear-gradient(#102833, #0b1b24 60%) no-repeat; border-radius:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  .hud {
+    position: absolute; inset: 0; display:flex; align-items:flex-start; justify-content:space-between;
+    padding: 10px 14px; pointer-events:none; color:var(--ui); font-weight:600; text-shadow:0 2px 6px rgba(0,0,0,.6);
+    font-size: clamp(14px, 2vw, 18px);
+  }
+  .centerMsg {
+    position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+    color:var(--ui); text-align:center; padding: 0 16px; text-shadow:0 4px 16px rgba(0,0,0,.6);
+  }
+  .btnRow {
+    position:absolute; inset:auto 0 10px 0; display:flex; justify-content:center; gap:12px; pointer-events:auto;
+  }
+  .btn {
+    background: rgba(255,255,255,.08); backdrop-filter: blur(6px);
+    border:1px solid rgba(255,255,255,.15); color:var(--ui);
+    padding:10px 14px; border-radius:12px; font-weight:700; cursor:pointer;
+    user-select:none;
+  }
+  .btn:active { transform: translateY(1px); }
+  .mobileJump {
+    position:absolute; right:10px; bottom:10px; pointer-events:auto;
+  }
+  @media (hover:none) and (pointer:coarse){
+    .mobileJump .btn { padding:14px 18px; font-size:18px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="position:relative">
+    <canvas id="game" width="900" height="400" aria-label="Whitetail Runner"></canvas>
+    <div class="hud">
+      <div id="score">Score: 0</div>
+      <div id="hiscore">Best: 0</div>
+    </div>
+    <div class="centerMsg" id="centerMsg">
+      <div>
+        <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
+        <p style="opacity:.9;margin:.25rem 0">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
+        <p style="opacity:.7;margin:.25rem 0">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+        <div class="btnRow">
+          <button class="btn" id="startBtn">Start</button>
+          <button class="btn" id="pauseBtn">Pause</button>
+          <button class="btn" id="restartBtn">Restart</button>
+        </div>
+      </div>
+    </div>
+    <div class="mobileJump">
+      <button class="btn" id="jumpBtn">Jump</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // UI
+  const scoreEl = document.getElementById('score');
+  const hiscoreEl = document.getElementById('hiscore');
+  const centerMsg = document.getElementById('centerMsg');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const jumpBtn = document.getElementById('jumpBtn');
+
+  // Persistent high score
+  const HS_KEY = 'whitetail_hiscore_v1';
+  let hiScore = Number(localStorage.getItem(HS_KEY) || 0);
+  hiscoreEl.textContent = 'Best: ' + hiScore;
+
+  // Game state
+  const W = canvas.width, H = canvas.height;
+  const groundY = H - 64;
+  let running = false, paused = false, gameOver = false;
+  let tPrev = 0, score = 0, speed = 280, spawnTimer = 0, difficulty = 0;
+
+  // Player (whitetail deer) parameters
+  const deer = {
+    x: 90,
+    y: groundY - 40,
+    w: 58, h: 40,
+    vy: 0,
+    onGround: true
+  };
+
+  // Obstacles list
+  const obstacles = []; // {type:'arrow'|'bullet', x,y,w,h, vx, extras...}
+
+  // Input
+  function jump() {
+    if (!running || paused) return;
+    if (deer.onGround) {
+      deer.vy = -520; // jump impulse
+      deer.onGround = false;
+    }
+  }
+
+  // Controls
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
+    if (e.code === 'KeyP') togglePause();
+    if (e.code === 'Enter') { if (!running || gameOver) startGame(true); }
+  }, {passive:false});
+
+  canvas.addEventListener('pointerdown', jump, {passive:true});
+  jumpBtn.addEventListener('click', jump);
+  startBtn.addEventListener('click', () => startGame(!gameOver));
+  pauseBtn.addEventListener('click', togglePause);
+  restartBtn.addEventListener('click', () => startGame(true));
+
+  function togglePause(){
+    if (!running || gameOver) return;
+    paused = !paused;
+    centerMsg.style.display = paused ? 'grid' : 'none';
+    centerMsg.querySelector('h1').textContent = 'Paused';
+  }
+
+  function startGame(reset=false){
+    if (reset) {
+      obstacles.length = 0;
+      score = 0; speed = 280; spawnTimer = 0; difficulty = 0;
+      deer.x = 90; deer.y = groundY - 40; deer.vy = 0; deer.onGround = true;
+      gameOver = false;
+    }
+    running = true; paused = false;
+    centerMsg.style.display = 'none';
+    tPrev = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function endGame(){
+    gameOver = true; running = false;
+    if (score > hiScore) {
+      hiScore = score;
+      localStorage.setItem(HS_KEY, String(hiScore));
+      hiscoreEl.textContent = 'Best: ' + hiScore;
+    }
+    centerMsg.style.display = 'grid';
+    centerMsg.querySelector('h1').textContent = 'Game Over';
+  }
+
+  // Helpers
+  function rand(a,b){ return Math.random()*(b-a)+a; }
+
+  // Spawning obstacles (arrows & bullets)
+  function spawnObstacle(){
+    // Increase difficulty gradually
+    difficulty += 0.02;
+    const type = Math.random() < 0.6 ? 'arrow' : 'bullet';
+    if (type === 'arrow'){
+      const h = 10, w = 36;
+      obstacles.push({
+        type, x: W + 10, y: groundY - 18, w, h, vx: -(speed + rand(0, 40)),
+        tip: 10 // triangle tip length
+      });
+    } else {
+      const size = 12;
+      // bullets vary in height slightly to keep you honest
+      const y = groundY - 18 - rand(0, 10);
+      obstacles.push({
+        type, x: W + 10, y, w:size, h:size, r:size/2, vx: -(speed + rand(60, 120))
+      });
+    }
+  }
+
+  // Collision
+  function aabb(a,b){
+    return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
+  }
+
+  // Drawing
+  function drawGround(){
+    // ground strip
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
+    ctx.fillRect(0, groundY, W, H - groundY);
+
+    // simple parallax scrub (bush silhouettes)
+    const t = performance.now() * 0.0002;
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#16313d';
+    for (let i=0;i<8;i++){
+      const x = (i*140 - (t*60)%140);
+      ctx.fillRect(x, groundY-22, 90, 10);
+      ctx.fillRect(x+30, groundY-36, 60, 8);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawDeer(){
+    // Body
+    ctx.save();
+    ctx.translate(0,0);
+    ctx.fillStyle = '#c79b6d'; // body
+    ctx.fillRect(deer.x, deer.y, deer.w, deer.h);
+
+    // Neck / head (simple shape)
+    ctx.fillStyle = '#d8b387';
+    ctx.fillRect(deer.x + deer.w - 22, deer.y - 12, 22, 22); // head
+    ctx.fillRect(deer.x + deer.w - 28, deer.y, 10, 16); // neck
+
+    // Eye
+    ctx.fillStyle = '#0b1b24';
+    ctx.fillRect(deer.x + deer.w - 10, deer.y - 4, 3, 3);
+
+    // Antlers
+    ctx.strokeStyle = '#f2e7c9';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(deer.x + deer.w - 14, deer.y - 12);
+    ctx.lineTo(deer.x + deer.w - 6, deer.y - 22);
+    ctx.moveTo(deer.x + deer.w - 18, deer.y - 12);
+    ctx.lineTo(deer.x + deer.w - 22, deer.y - 22);
+    ctx.stroke();
+
+    // Legs (simple motion suggestion)
+    const legY = deer.y + deer.h;
+    ctx.strokeStyle = '#a77f52';
+    ctx.lineWidth = 4;
+    const swing = Math.sin(performance.now()*0.02) * (deer.onGround ? 3 : 1);
+    for (let i=0;i<4;i++){
+      const lx = deer.x + 6 + i*12 + (i%2===0 ? swing : -swing);
+      ctx.beginPath(); ctx.moveTo(lx, legY-6); ctx.lineTo(lx, legY+8); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawObstacle(o){
+    if (o.type === 'arrow'){
+      // Shaft
+      ctx.fillStyle = '#d7dadb';
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // Tip (triangle)
+      ctx.fillStyle = '#b0b7bc';
+      ctx.beginPath();
+      ctx.moveTo(o.x + o.w, o.y + o.h/2);
+      ctx.lineTo(o.x + o.w + o.tip, o.y);
+      ctx.lineTo(o.x + o.w + o.tip, o.y + o.h);
+      ctx.closePath();
+      ctx.fill();
+      // Fletching
+      ctx.fillStyle = '#76d7ea';
+      ctx.fillRect(o.x - 6, o.y - 2, 6, o.h + 4);
+    } else {
+      // Bullet as circle
+      ctx.fillStyle = '#c0c7cc';
+      ctx.beginPath();
+      ctx.arc(o.x + o.r, o.y + o.r, o.r, 0, Math.PI*2);
+      ctx.fill();
+      // small glare
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      ctx.beginPath();
+      ctx.arc(o.x + o.r - 3, o.y + o.r - 3, o.r*0.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function update(dt){
+    if (paused || !running) return;
+
+    // Speed ramp
+    speed += 6 * dt; // gradual ramp
+    // Spawn logic
+    spawnTimer -= dt;
+    if (spawnTimer <= 0){
+      spawnObstacle();
+      // Next spawn based on speed & randomness
+      const baseGap = Math.max(0.7, 1.6 - speed/600); // tighter as speed rises
+      spawnTimer = baseGap + Math.random()*0.5;
+    }
+
+    // Gravity
+    deer.vy += 1600 * dt;
+    deer.y += deer.vy * dt;
+    if (deer.y + deer.h >= groundY){
+      deer.y = groundY - deer.h;
+      deer.vy = 0;
+      deer.onGround = true;
+    }
+
+    // Move obstacles
+    for (let i=obstacles.length-1; i>=0; i--){
+      const o = obstacles[i];
+      o.x += o.vx * dt;
+      if (o.x + (o.w || o.r*2) < -40) obstacles.splice(i,1);
+    }
+
+    // Score & collision
+    score += Math.floor(200 * dt);
+    scoreEl.textContent = 'Score: ' + score;
+
+    // AABB checks (convert bullet circle to aabb for simplicity)
+    const deerBox = {x:deer.x, y:deer.y, w:deer.w, h:deer.h};
+    for (const o of obstacles){
+      if (o.type === 'bullet'){
+        const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
+        if (aabb(deerBox, bb)) return endGame();
+      } else {
+        const ab = {x:o.x, y:o.y, w:o.w+o.tip, h:o.h};
+        if (aabb(deerBox, ab)) return endGame();
+      }
+    }
+  }
+
+  function draw(){
+    // Clear
+    ctx.clearRect(0,0,W,H);
+
+    // Sky stars (subtle)
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#bde7f2';
+    for (let i=0;i<40;i++){
+      const x = (i*23 + (performance.now()*0.02)) % W;
+      const y = (i*37 % (groundY-60)) * 0.9;
+      ctx.fillRect(x, y*0.5 + 10, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    drawGround();
+    drawDeer();
+
+    for (const o of obstacles) drawObstacle(o);
+
+    // Flash border on near-hit (optional)
+    // (simple cue when many obstacles exist)
+  }
+
+  function loop(tNow){
+    if (!running){ return; }
+    const dt = Math.min((tNow - tPrev)/1000, 0.033); // cap dt for stability
+    tPrev = tNow;
+
+    update(dt);
+    draw();
+
+    if (!gameOver) requestAnimationFrame(loop);
+  }
+
+  // Initialize with title screen visible
+})();
+</script>
+</body>
+</html>
