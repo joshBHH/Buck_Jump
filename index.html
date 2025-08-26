@@ -8,6 +8,7 @@
   :root { --bg:#0b1b24; --ground:#25404d; --ui:#e6f2f7; --accent:#76d7ea; --hit:#ff6978; }
   html,body { height:100%; margin:0; background:var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; }
   .wrap { display:grid; place-items:center; height:100%; }
+  .stage { position:relative; display:flex; gap:10px; align-items:flex-start; }
   canvas { width: min(95vw, 1000px); aspect-ratio: 9 / 4; background: linear-gradient(#102833, #0b1b24 60%) no-repeat; border-radius:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
   .hud {
     position: absolute; inset: 0; display:flex; align-items:flex-start; justify-content:space-between;
@@ -19,8 +20,7 @@
     color:var(--ui); text-align:center; padding: 0 16px; text-shadow:0 4px 16px rgba(0,0,0,.6);
   }
   .btnRow {
-    position:absolute; inset:auto 0 10px 0; display:flex; justify-content:center; gap:12px; pointer-events:auto;
-    flex-wrap: wrap;
+    position:absolute; inset:auto 0 10px 0; display:flex; justify-content:center; gap:12px; pointer-events:auto; flex-wrap:wrap;
   }
   .btn {
     background: rgba(255,255,255,.08); backdrop-filter: blur(6px);
@@ -29,56 +29,79 @@
     user-select:none;
   }
   .btn:active { transform: translateY(1px); }
-  .mobileJump {
-    position:absolute; right:10px; bottom:10px; pointer-events:auto;
-  }
-  .panel {
-    background: rgba(10,20,26,.85); border:1px solid rgba(255,255,255,.15);
-    border-radius:16px; padding:16px; max-width:min(92vw, 520px);
+  .mobileJump { position:absolute; right:10px; bottom:10px; pointer-events:auto; }
+
+  /* Panel + scoreboard (always visible) */
+  .sidePanel {
+    color:var(--ui);
+    background: rgba(10,20,26,.85);
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:16px;
+    padding:12px;
+    width: 240px;
     box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    font-size: 14px;
   }
-  .panel h2 { margin:.3rem 0 0.6rem 0; font-size:clamp(18px,3.6vw,24px); }
-  .row { display:flex; justify-content:space-between; gap:16px; margin:.15rem 0; }
-  .muted { opacity:.75; }
-  .inputRow { display:flex; gap:8px; justify-content:center; margin-top:10px; }
-  input[type="text"]{
-    background: rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
-    color:var(--ui); padding:8px 10px; border-radius:10px; width:120px; font-weight:700; text-transform:uppercase;
+  .sidePanel h3 { margin: 0 0 8px 0; font-size: 16px; }
+  .field { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  .field input[type="text"]{
+    flex:1; background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2);
+    color: var(--ui); padding:6px 8px; border-radius:10px; font-weight:700; text-transform:uppercase;
   }
-  .scoresBtnRow { display:flex; justify-content:center; gap:10px; margin-top:10px; }
-  @media (hover:none) and (pointer:coarse){
-    .mobileJump .btn { padding:14px 18px; font-size:18px; }
+  .scoresList { max-height: 260px; overflow:auto; border-top:1px solid rgba(255,255,255,.15); margin-top:6px; padding-top:6px; }
+  .row { display:flex; justify-content:space-between; gap:8px; margin:.2rem 0; }
+  .muted { opacity:.8; }
+  .mini { font-size:12px; opacity:.8; }
+  .panelBtns { display:flex; gap:8px; margin-top:8px; }
+  @media (max-width: 980px){
+    .stage { flex-direction:column; align-items:center; }
+    .sidePanel { width: min(92vw, 340px); }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div style="position:relative">
-    <canvas id="game" width="900" height="400" aria-label="Whitetail Runner"></canvas>
+  <div class="stage">
+    <div style="position:relative">
+      <canvas id="game" width="900" height="400" aria-label="Whitetail Runner"></canvas>
 
-    <div class="hud">
-      <div id="score">Score: 0</div>
-      <div id="hiscore">Best: 0</div>
-    </div>
+      <div class="hud">
+        <div id="score">Score: 0</div>
+        <div id="hiscore">Best: 0</div>
+      </div>
 
-    <!-- Center overlay container (title, pause, game over, scoreboard) -->
-    <div class="centerMsg" id="centerMsg">
-      <div class="panel" id="panelContent">
-        <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
-        <p class="muted" style="margin:.25rem 0">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
-        <p class="muted" style="margin:.25rem 0">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
-        <div class="btnRow">
-          <button class="btn" id="startBtn">Start</button>
-          <button class="btn" id="pauseBtn">Pause</button>
-          <button class="btn" id="restartBtn">Restart</button>
-          <button class="btn" id="scoresBtn">Scores</button>
+      <div class="centerMsg" id="centerMsg">
+        <div class="panel" id="panelContent" style="background: rgba(10,20,26,.85); border:1px solid rgba(255,255,255,.15); border-radius:16px; padding:16px; max-width:min(92vw, 520px); box-shadow: 0 8px 30px rgba(0,0,0,.5);">
+          <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
+          <p class="muted" style="margin:.25rem 0">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
+          <p class="muted" style="margin:.25rem 0">Avoid the hunter’s <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+          <div class="btnRow">
+            <button class="btn" id="startBtn">Start</button>
+            <button class="btn" id="pauseBtn">Pause</button>
+            <button class="btn" id="restartBtn">Restart</button>
+          </div>
         </div>
+      </div>
+
+      <div class="mobileJump">
+        <button class="btn" id="jumpBtn">Jump</button>
       </div>
     </div>
 
-    <!-- Mobile jump button -->
-    <div class="mobileJump">
-      <button class="btn" id="jumpBtn">Jump</button>
+    <!-- Always-visible scoreboard panel -->
+    <div class="sidePanel" id="sidePanel">
+      <h3>High Scores</h3>
+      <div class="field">
+        <label for="nameInput" class="mini">Name</label>
+        <input id="nameInput" type="text" maxlength="8" value="YOU" />
+      </div>
+      <div class="mini muted">Best Personal: <b id="bestLabel">0</b></div>
+      <div class="scoresList" id="scoresList"></div>
+      <div class="panelBtns">
+        <button class="btn" id="clearBtn" style="padding:6px 10px;">Clear Board</button>
+        <button class="btn" id="demoAddBtn" style="padding:6px 10px;">Add Test</button>
+      </div>
+      <div class="mini muted" style="margin-top:6px">Scores save automatically on Game Over.</div>
     </div>
   </div>
 </div>
@@ -97,16 +120,26 @@
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
   const restartBtn = document.getElementById('restartBtn');
-  const scoresBtn = document.getElementById('scoresBtn');
   const jumpBtn = document.getElementById('jumpBtn');
 
+  // Scoreboard panel refs
+  const nameInput = document.getElementById('nameInput');
+  const bestLabel = document.getElementById('bestLabel');
+  const scoresList = document.getElementById('scoresList');
+  const clearBtn = document.getElementById('clearBtn');
+  const demoAddBtn = document.getElementById('demoAddBtn');
+
   // Storage keys
-  const HS_KEY = 'whitetail_hiscore_v1';
-  const SCORES_KEY = 'whitetail_scoreboard_v1';
+  const HS_KEY = 'whitetail_hiscore_v2';
+  const SCORES_KEY = 'whitetail_scoreboard_v2';
+  const NAME_KEY = 'whitetail_player_name_v2';
 
   // Load persistent data
   let hiScore = Number(localStorage.getItem(HS_KEY) || 0);
+  let savedName = (localStorage.getItem(NAME_KEY) || 'YOU').toUpperCase().slice(0,8);
+  nameInput.value = savedName;
   hiscoreEl.textContent = 'Best: ' + hiScore;
+  bestLabel.textContent = hiScore;
 
   function loadScores(){
     try { return JSON.parse(localStorage.getItem(SCORES_KEY) || '[]'); }
@@ -119,8 +152,29 @@
     const scores = loadScores();
     scores.push({ name: (name||'YOU').slice(0,8).toUpperCase(), score, date: Date.now() });
     scores.sort((a,b) => b.score - a.score);
-    saveScores(scores.slice(0, 10)); // keep top 10
+    saveScores(scores.slice(0, 10));
+    renderScores();
   }
+  function renderScores(){
+    const scores = loadScores();
+    scoresList.innerHTML = scores.length
+      ? scores.map((s,i)=>`<div class="row"><div>#${i+1}. <b>${s.name}</b></div><div>${s.score}</div></div>`).join('')
+      : `<div class="mini muted">No scores yet — be the first!</div>`;
+  }
+  renderScores();
+
+  nameInput.addEventListener('input', () => {
+    const v = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
+    nameInput.value = v;
+    localStorage.setItem(NAME_KEY, v);
+  });
+  clearBtn.addEventListener('click', () => {
+    localStorage.removeItem(SCORES_KEY);
+    renderScores();
+  });
+  demoAddBtn.addEventListener('click', () => {
+    addScore(nameInput.value || 'YOU', Math.floor(Math.random()*1000));
+  });
 
   // Game state
   const W = canvas.width, H = canvas.height;
@@ -128,19 +182,33 @@
   let running = false, paused = false, gameOver = false;
   let tPrev = 0, score = 0, speed = 280, spawnTimer = 0;
 
-  const deer = { x: 90, y: groundY - 40, w: 58, h: 40, vy: 0, onGround: true };
-  const obstacles = [];
+  // Weapon swap rates (seconds)
+  const SWAP_MIN = 4;
+  const SWAP_MAX = 7;
+  let nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
 
-  // Input: jump
+  // Deer (longer legs & bigger rack)
+  const deer = { x: 90, y: groundY - 48, w: 60, h: 48, vy: 0, onGround: true };
+
+  // Hunter (right side)
+  const hunter = {
+    x: W - 120, y: groundY - 60, w: 50, h: 60,
+    weapon: 'bow',
+    fireTimer: 0
+  };
+
+  const obstacles = []; // projectiles
+  const dust = [];      // landing dust particles
+
+  // Input
   function jump() {
     if (!running || paused) return;
     if (deer.onGround) {
-      deer.vy = -520;
+      deer.vy = -540;
       deer.onGround = false;
     }
   }
 
-  // Controls
   window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
     if (e.code === 'KeyP') togglePause();
@@ -153,16 +221,11 @@
   startBtn.addEventListener('click', () => startGame(!gameOver));
   pauseBtn.addEventListener('click', togglePause);
   restartBtn.addEventListener('click', () => startGame(true));
-  scoresBtn.addEventListener('click', showScores);
 
   function togglePause(){
     if (!running || gameOver) return;
     paused = !paused;
-    if (paused) {
-      showPause();
-    } else {
-      hideCenter();
-    }
+    if (paused) showPause(); else hideCenter();
   }
 
   function showPause(){
@@ -172,57 +235,26 @@
       <div class="btnRow">
         <button class="btn" id="resumeBtn">Resume</button>
         <button class="btn" id="restartBtn2">Restart</button>
-        <button class="btn" id="scoresBtn2">Scores</button>
       </div>
     `;
     centerMsg.style.display = 'grid';
-    // wire buttons
     panelContent.querySelector('#resumeBtn').onclick = () => { paused = false; hideCenter(); };
     panelContent.querySelector('#restartBtn2').onclick = () => startGame(true);
-    panelContent.querySelector('#scoresBtn2').onclick = showScores;
   }
 
   function showTitle(){
     panelContent.innerHTML = `
       <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
       <p class="muted">Press <b>Space</b> / <b>↑</b> or <b>Tap</b> to Jump</p>
-      <p class="muted">Jump over <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+      <p class="muted">Avoid the hunter's <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
       <div class="btnRow">
         <button class="btn" id="startBtnX">Start</button>
         <button class="btn" id="restartBtnX">Restart</button>
-        <button class="btn" id="scoresBtnX">Scores</button>
       </div>
     `;
     centerMsg.style.display = 'grid';
     panelContent.querySelector('#startBtnX').onclick = () => startGame(!gameOver);
     panelContent.querySelector('#restartBtnX').onclick = () => startGame(true);
-    panelContent.querySelector('#scoresBtnX').onclick = showScores;
-  }
-
-  function showScores(){
-    const scores = loadScores();
-    const rows = scores.length ? scores.map((s,i) =>
-      `<div class="row"><div>#${i+1}. <b>${s.name}</b></div><div>${s.score}</div></div>`
-    ).join('') : `<p class="muted" style="text-align:center;margin:.5rem 0">No scores yet — be the first!</p>`;
-
-    panelContent.innerHTML = `
-      <h2>High Score Board (Top 10)</h2>
-      <div class="row"><div class="muted">Best Personal</div><div><b>${hiScore}</b></div></div>
-      <hr style="border:0;border-top:1px solid rgba(255,255,255,.15); margin:8px 0 12px 0;">
-      <div>${rows}</div>
-      <div class="scoresBtnRow">
-        <button class="btn" id="backBtn">Back</button>
-        <button class="btn" id="clearBtn">Clear Scores</button>
-      </div>
-    `;
-    centerMsg.style.display = 'grid';
-    const backBtn = panelContent.querySelector('#backBtn');
-    const clearBtn = panelContent.querySelector('#clearBtn');
-    backBtn.onclick = showTitle;
-    clearBtn.onclick = () => {
-      localStorage.removeItem(SCORES_KEY);
-      showScores();
-    };
   }
 
   function hideCenter(){ centerMsg.style.display = 'none'; }
@@ -230,8 +262,11 @@
   function startGame(reset=false){
     if (reset) {
       obstacles.length = 0;
+      dust.length = 0;
       score = 0; speed = 280; spawnTimer = 0;
-      deer.x = 90; deer.y = groundY - 40; deer.vy = 0; deer.onGround = true;
+      deer.x = 90; deer.y = groundY - deer.h; deer.vy = 0; deer.onGround = true;
+      hunter.weapon = 'bow'; hunter.fireTimer = 0;
+      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
       gameOver = false;
     }
     running = true; paused = false;
@@ -248,64 +283,107 @@
       hiScore = score;
       localStorage.setItem(HS_KEY, String(hiScore));
       hiscoreEl.textContent = 'Best: ' + hiScore;
+      bestLabel.textContent = hiScore;
     }
 
-    // Game Over + name input to save score
+    // Auto-save to scoreboard
+    const who = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
+    localStorage.setItem(NAME_KEY, who);
+    addScore(who, score);
+
     panelContent.innerHTML = `
       <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Game Over</h1>
       <p class="muted">Score: <b>${score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; Best: <b>${hiScore}</b></p>
-      <div class="inputRow">
-        <input id="nameInput" type="text" maxlength="8" value="YOU" aria-label="Your initials or name" />
-        <button class="btn" id="saveBtn">Save Score</button>
-      </div>
       <div class="btnRow" style="position:static;margin-top:10px">
         <button class="btn" id="restartBtnG">Restart</button>
-        <button class="btn" id="scoresBtnG">Scores</button>
       </div>
     `;
     centerMsg.style.display = 'grid';
-
-    const nameInput = panelContent.querySelector('#nameInput');
-    nameInput.select();
-
-    panelContent.querySelector('#saveBtn').onclick = () => {
-      addScore(nameInput.value || 'YOU', score);
-      showScores();
-    };
     panelContent.querySelector('#restartBtnG').onclick = () => startGame(true);
-    panelContent.querySelector('#scoresBtnG').onclick = showScores;
   }
 
   // Helpers
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
+  // Hunter-driven spawns + swap rate
+  function maybeSwapWeapon(dt){
+    nextSwapIn -= dt;
+    if (nextSwapIn <= 0){
+      hunter.weapon = (hunter.weapon === 'bow') ? 'rifle' : 'bow';
+      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+    }
+  }
+
   function spawnObstacle(){
-    const type = Math.random() < 0.6 ? 'arrow' : 'bullet';
+    const origin = weaponMuzzle(hunter);
+    const type = (hunter.weapon === 'bow') ? 'arrow' : 'bullet';
+    hunter.fireTimer = 0.18; // show firing pose
+
     if (type === 'arrow'){
       const h = 10, w = 36;
       obstacles.push({
-        type, x: W + 10, y: groundY - 18, w, h, vx: -(speed + rand(0, 40)),
-        tip: 10
+        type, x: origin.x, y: origin.y - 5, w, h, vx: -(speed + rand(0, 40)), tip: 10
       });
     } else {
       const size = 12;
-      const y = groundY - 18 - rand(0, 10);
+      const spray = rand(-8, 2);
       obstacles.push({
-        type, x: W + 10, y, w:size, h:size, r:size/2, vx: -(speed + rand(60, 120))
+        type, x: origin.x - size, y: origin.y + spray, w:size, h:size, r:size/2, vx: -(speed + rand(60, 120))
       });
     }
+  }
+
+  function weaponMuzzle(h){
+    if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };
+    return { x: h.x + 52, y: h.y + 24 }; // rifle muzzle at barrel tip
   }
 
   function aabb(a,b){
     return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
   }
 
-  // Drawing
+  // Dust particles
+  function spawnDust(x, y){
+    for (let i=0;i<10;i++){
+      dust.push({
+        x: x + rand(-8, 8),
+        y: y + rand(-2, 2),
+        vx: rand(-90, 90),
+        vy: rand(-40, -10),
+        life: rand(0.3, 0.6),
+        size: rand(2, 4)
+      });
+    }
+  }
+
+  function updateDust(dt){
+    for (let i=dust.length-1;i>=0;i--){
+      const p = dust[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 260 * dt; // gravity
+      if (p.life <= 0) dust.splice(i,1);
+    }
+  }
+
+  function drawDust(){
+    ctx.save();
+    for (const p of dust){
+      const alpha = Math.max(0, p.life / 0.6);
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fillStyle = '#c2c6c7';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   function drawGround(){
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
     ctx.fillRect(0, groundY, W, H - groundY);
 
-    // simple parallax shrubs
+    // parallax shrubs
     const t = performance.now() * 0.0002;
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#16313d';
@@ -317,36 +395,161 @@
     ctx.globalAlpha = 1;
   }
 
+  // Improved whitetail deer
   function drawDeer(){
+    const {x,y,w,h} = deer;
     ctx.save();
-    ctx.fillStyle = '#c79b6d'; // body
-    ctx.fillRect(deer.x, deer.y, deer.w, deer.h);
 
-    ctx.fillStyle = '#d8b387'; // head & neck
-    ctx.fillRect(deer.x + deer.w - 22, deer.y - 12, 22, 22);
-    ctx.fillRect(deer.x + deer.w - 28, deer.y, 10, 16);
+    // slight stretch in air
+    const airborne = !deer.onGround;
+    const scaleY = airborne ? 0.97 : 1.00;
+    const scaleX = airborne ? 1.03 : 1.00;
+    ctx.translate(x + w/2, y + h/2);
+    ctx.scale(scaleX, scaleY);
+    ctx.translate(-(x + w/2), -(y + h/2));
 
-    ctx.fillStyle = '#0b1b24'; // eye
-    ctx.fillRect(deer.x + deer.w - 10, deer.y - 4, 3, 3);
+    // body
+    ctx.fillStyle = '#8f6b4b';
+    roundedRect(x+8, y+10, w-16, h-16, 10, true);
 
-    ctx.strokeStyle = '#f2e7c9'; // antlers
-    ctx.lineWidth = 3;
+    // underside
+    ctx.fillStyle = '#ede6d9';
+    roundedRect(x+18, y+22, w-42, 12, 6, true);
+
+    // neck
+    ctx.fillStyle = '#8f6b4b';
+    roundedRect(x + w - 34, y + 6, 16, 24, 6, true);
+
+    // head
+    ctx.fillStyle = '#a88561';
+    roundedRect(x + w - 32, y - 4, 24, 18, 6, true);
+
+    // muzzle
+    ctx.fillStyle = '#755a42';
+    roundedRect(x + w - 14, y + 2, 12, 8, 3, true);
+
+    // ear
+    ctx.fillStyle = '#a88561';
     ctx.beginPath();
-    ctx.moveTo(deer.x + deer.w - 14, deer.y - 12);
-    ctx.lineTo(deer.x + deer.w - 6, deer.y - 22);
-    ctx.moveTo(deer.x + deer.w - 18, deer.y - 12);
-    ctx.lineTo(deer.x + deer.w - 22, deer.y - 22);
+    ctx.moveTo(x + w - 26, y - 8);
+    ctx.lineTo(x + w - 12, y - 18);
+    ctx.lineTo(x + w - 8,  y - 2);
+    ctx.closePath(); ctx.fill();
+
+    // eye
+    ctx.fillStyle = '#0b1b24';
+    ctx.beginPath(); ctx.arc(x + w - 10, y + 0, 2.2, 0, Math.PI*2); ctx.fill();
+
+    // bigger rack
+    ctx.strokeStyle = '#e9dec3';
+    ctx.lineWidth = 2.6;
+    // left beam
+    ctx.beginPath();
+    ctx.moveTo(x + w - 20, y - 6);
+    ctx.lineTo(x + w - 34, y - 28);
+    ctx.stroke();
+    // right beam
+    ctx.beginPath();
+    ctx.moveTo(x + w - 12, y - 6);
+    ctx.lineTo(x + w + 4,  y - 28);
+    ctx.stroke();
+    // tines
+    const tines = [
+      [ -30, -24, -36, -30 ],
+      [ -26, -18, -34, -24 ],
+      [   0, -24,   6, -30 ],
+      [   4, -18,  12, -24 ],
+      [ -22, -12, -28, -16 ],
+      [   8, -12,  16, -16 ],
+    ];
+    ctx.beginPath();
+    for (const d of tines){
+      ctx.moveTo(x + w + d[0], y + d[1]);
+      ctx.lineTo(x + w + d[2], y + d[3]);
+    }
     ctx.stroke();
 
-    // legs
-    const legY = deer.y + deer.h;
-    ctx.strokeStyle = '#a77f52';
+    // tail
+    ctx.fillStyle = '#ede6d9';
+    roundedRect(x + 6, y + 6, 8, 10, 4, true);
+
+    // legs (longer)
+    const legY = y + h - 2;
+    ctx.strokeStyle = '#7c5e44';
     ctx.lineWidth = 4;
     const swing = Math.sin(performance.now()*0.02) * (deer.onGround ? 3 : 1);
+    const legOffsets = [6, 18, 36, 48];
     for (let i=0;i<4;i++){
-      const lx = deer.x + 6 + i*12 + (i%2===0 ? swing : -swing);
-      ctx.beginPath(); ctx.moveTo(lx, legY-6); ctx.lineTo(lx, legY+8); ctx.stroke();
+      const lx = x + legOffsets[i] + ((i%2===0) ? swing : -swing);
+      ctx.beginPath(); ctx.moveTo(lx, legY-12); ctx.lineTo(lx, legY+12); ctx.stroke();
     }
+
+    // shadow
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(x + w/2, y + h + 10, 24, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function roundedRect(x,y,w,h,r,fill=true){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y,   x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x,   y+h, r);
+    ctx.arcTo(x,   y+h, x,   y,   r);
+    ctx.arcTo(x,   y,   x+w, y,   r);
+    if (fill) ctx.fill(); else ctx.stroke();
+  }
+
+  // Hunter
+  function drawHunter(){
+    const h = hunter;
+    ctx.save();
+    ctx.translate(h.x, h.y);
+
+    // legs
+    ctx.strokeStyle = '#3a4a52'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(12, 58); ctx.lineTo(12, 44); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(28, 58); ctx.lineTo(28, 44); ctx.stroke();
+
+    // torso
+    ctx.fillStyle = '#4a6270';
+    roundedRect(6, 22, 30, 24, 6, true);
+
+    // head
+    ctx.fillStyle = '#d8b387';
+    ctx.beginPath(); ctx.arc(21, 12, 8, 0, Math.PI*2); ctx.fill();
+
+    // hat
+    ctx.fillStyle = '#2c3c44';
+    roundedRect(14, 4, 16, 6, 2, true);
+    ctx.fillRect(12, 8, 16, 2);
+
+    const firing = h.fireTimer > 0;
+
+    if (h.weapon === 'bow'){
+      // arms
+      ctx.strokeStyle = '#4a6270'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(10, 30); ctx.lineTo(4, 28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(30, 30); ctx.lineTo(firing ? 12 : 18, firing ? 26 : 28); ctx.stroke();
+      // bow + string
+      ctx.strokeStyle = '#a17a52'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(4, 20); ctx.quadraticCurveTo(0, 30, 4, 40); ctx.stroke();
+      ctx.strokeStyle = '#c7c7c7'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(4, 20); ctx.lineTo(4, 40); ctx.stroke();
+      if (firing){ ctx.fillStyle = '#f0f6ff'; ctx.beginPath(); ctx.arc(6, 30, 3, 0, Math.PI*2); ctx.fill(); }
+    } else {
+      // rifle
+      ctx.fillStyle = '#835d3a'; roundedRect(6, 26, 26, 6, 2, true);
+      ctx.fillStyle = '#a27b51'; ctx.fillRect(24, 24, 28, 4);
+      ctx.strokeStyle = '#4a6270'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(14, 30); ctx.lineTo(24, 28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(8, 30); ctx.lineTo(14, 30); ctx.stroke();
+      if (firing){ ctx.fillStyle = '#ffd966'; ctx.beginPath(); ctx.moveTo(52, 24); ctx.lineTo(58, 22); ctx.lineTo(58, 26); ctx.closePath(); ctx.fill(); }
+    }
+
     ctx.restore();
   }
 
@@ -364,7 +567,7 @@
       ctx.fillStyle = '#76d7ea'; // fletching
       ctx.fillRect(o.x - 6, o.y - 2, 6, o.h + 4);
     } else {
-      ctx.fillStyle = '#c0c7cc'; // bullet
+      ctx.fillStyle = '#c0c7cc';
       ctx.beginPath();
       ctx.arc(o.x + o.r, o.y + o.r, o.r, 0, Math.PI*2);
       ctx.fill();
@@ -378,38 +581,49 @@
   function update(dt){
     if (paused || !running) return;
 
-    // Speed ramp
+    // speed ramp
     speed += 6 * dt;
 
-    // Spawning
+    // hunter timers
+    if (hunter.fireTimer > 0) hunter.fireTimer -= dt;
+    maybeSwapWeapon(dt);
+
+    // spawn cadence
     spawnTimer -= dt;
     if (spawnTimer <= 0){
       spawnObstacle();
-      const baseGap = Math.max(0.7, 1.6 - speed/600);
+      const baseGap = Math.max(0.75, 1.6 - speed/600);
       spawnTimer = baseGap + Math.random()*0.5;
     }
 
-    // Gravity & movement
+    // gravity & movement
+    const wasAirborne = !deer.onGround;
     deer.vy += 1600 * dt;
     deer.y += deer.vy * dt;
     if (deer.y + deer.h >= groundY){
+      if (wasAirborne) spawnDust(deer.x + deer.w*0.4, groundY - 2); // dust on landing
       deer.y = groundY - deer.h;
       deer.vy = 0;
       deer.onGround = true;
+    } else {
+      deer.onGround = false;
     }
 
-    // Move obstacles
+    // projectiles
     for (let i=obstacles.length-1; i>=0; i--){
       const o = obstacles[i];
       o.x += o.vx * dt;
       if (o.x + (o.w || o.r*2) < -40) obstacles.splice(i,1);
     }
 
-    // Score & collision
+    // particles
+    updateDust(dt);
+
+    // score & collision
     score += Math.floor(200 * dt);
     scoreEl.textContent = 'Score: ' + score;
 
-    const deerBox = {x:deer.x, y:deer.y, w:deer.w, h:deer.h};
+    const deerBox = {x:deer.x+2, y:deer.y+2, w:deer.w-4, h:deer.h-4};
     for (const o of obstacles){
       if (o.type === 'bullet'){
         const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
@@ -424,7 +638,7 @@
   function draw(){
     ctx.clearRect(0,0,W,H);
 
-    // subtle sky stars
+    // subtle stars
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = '#bde7f2';
     for (let i=0;i<40;i++){
@@ -436,7 +650,9 @@
 
     drawGround();
     drawDeer();
+    drawHunter();
     for (const o of obstacles) drawObstacle(o);
+    drawDust();
   }
 
   function loop(tNow){
@@ -450,8 +666,9 @@
     if (!gameOver) requestAnimationFrame(loop);
   }
 
-  // Show title on load
+  // init
   showTitle();
+
 })();
 </script>
 </body>
