@@ -218,4 +218,477 @@
   // Pointer: tap anywhere on canvas to jump
   // Avoid stealing taps on the sidePanel (name/clear buttons)
   function isInside(el, target){
-    while (target){ if (target === el) return tru
+    while (target){ if (target === el) return true; target = target.parentElement; }
+    return false;
+  }
+  window.addEventListener('pointerdown', (e) => {
+    const target = e.target;
+    if (isInside(sidePanel, target)) return; // ignore taps in scoreboard UI
+    requestJump();
+  }, {passive:true});
+
+  // Controls
+  startBtn.addEventListener('click', () => startGame(!gameOver));
+  pauseBtn.addEventListener('click', togglePause);
+  restartBtn.addEventListener('click', () => startGame(true));
+
+  function togglePause(){
+    if (!running || gameOver) return;
+    paused = !paused;
+    if (paused) showPause(); else hideCenter();
+  }
+
+  function showPause(){
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Paused</h1>
+      <p class="muted">Current Score: <b>${score}</b></p>
+      <div class="btnRow">
+        <button class="btn" id="resumeBtn">Resume</button>
+        <button class="btn" id="restartBtn2">Restart</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    panelContent.querySelector('#resumeBtn').onclick = () => { paused = false; hideCenter(); };
+    panelContent.querySelector('#restartBtn2').onclick = () => startGame(true);
+  }
+
+  function showTitle(){
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
+      <p class="muted">Press <b>Space</b>/<b>↑</b> or <b>Tap anywhere</b> to jump</p>
+      <p class="muted">Avoid the hunter's <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+      <div class="btnRow">
+        <button class="btn" id="startBtnX">Start</button>
+        <button class="btn" id="restartBtnX">Restart</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    panelContent.querySelector('#startBtnX').onclick = () => startGame(!gameOver);
+    panelContent.querySelector('#restartBtnX').onclick = () => startGame(true);
+  }
+  function hideCenter(){ centerMsg.style.display = 'none'; }
+
+  function startGame(reset=false){
+    if (reset) {
+      obstacles.length = 0; dust.length = 0;
+      score = 0; speed = 300; spawnTimer = 0;
+      deer.x = 90; deer.y = groundY - deer.h; deer.vy = 0; deer.onGround = true;
+      hunter.weapon = 'bow'; hunter.fireTimer = 0;
+      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+      jumpBufferTimer = 0; coyoteTimer = 0;
+      gameOver = false;
+    }
+    running = true; paused = false;
+    hideCenter();
+    tPrev = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function endGame(){
+    gameOver = true; running = false;
+
+    if (score > hiScore) {
+      hiScore = score;
+      localStorage.setItem(HS_KEY, String(hiScore));
+      hiscoreEl.textContent = 'Best: ' + hiScore;
+      bestLabel.textContent = hiScore;
+    }
+
+    // Auto-save to scoreboard
+    const who = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
+    localStorage.setItem(NAME_KEY, who);
+    addScore(who, score);
+
+    panelContent.innerHTML = `
+      <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Game Over</h1>
+      <p class="muted">Score: <b>${score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; Best: <b>${hiScore}</b></p>
+      <div class="btnRow" style="position:static;margin-top:10px">
+        <button class="btn" id="restartBtnG">Restart</button>
+      </div>
+    `;
+    centerMsg.style.display = 'grid';
+    panelContent.querySelector('#restartBtnG').onclick = () => startGame(true);
+  }
+
+  // Helpers
+  function rand(a,b){ return Math.random()*(b-a)+a; }
+
+  // Weapon logic
+  function maybeSwapWeapon(dt){
+    nextSwapIn -= dt;
+    if (nextSwapIn <= 0){
+      hunter.weapon = (hunter.weapon === 'bow') ? 'rifle' : 'bow';
+      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+    }
+  }
+  function spawnObstacle(){
+    const origin = weaponMuzzle(hunter);
+    const type = (hunter.weapon === 'bow') ? 'arrow' : 'bullet';
+    hunter.fireTimer = 0.18;
+
+    if (type === 'arrow'){
+      const h = 10, w = 44; // a bit longer
+      obstacles.push({
+        type, x: origin.x - w, y: origin.y - 5, w, h,
+        vx: -(speed + rand(0, 40)), tip: 12
+      });
+    } else {
+      const size = 12, spray = rand(-8, 2);
+      obstacles.push({
+        type, x: origin.x - size, y: origin.y + spray, w:size, h:size, r:size/2,
+        vx: -(speed + rand(60, 120))
+      });
+    }
+  }
+  function weaponMuzzle(h){
+    if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };         // left-release
+    return { x: h.x - 6, y: h.y + 24 }; // rifle muzzle to the LEFT of the body
+  }
+
+  function aabb(a,b){
+    return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
+  }
+
+  // Dust particles
+  function spawnDust(x, y){
+    for (let i=0;i<10;i++){
+      dust.push({
+        x: x + rand(-8, 8),
+        y: y + rand(-2, 2),
+        vx: rand(-90, 90),
+        vy: rand(-40, -10),
+        life: rand(0.3, 0.6),
+        size: rand(2, 4)
+      });
+    }
+  }
+  function updateDust(dt){
+    for (let i=dust.length-1;i>=0;i--){
+      const p = dust[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 260 * dt;
+      if (p.life <= 0) dust.splice(i,1);
+    }
+  }
+  function drawDust(){
+    ctx.save();
+    for (const p of dust){
+      const alpha = Math.max(0, p.life / 0.6);
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fillStyle = '#c2c6c7';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawGround(){
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
+    ctx.fillRect(0, groundY, W, H - groundY);
+    const t = performance.now() * 0.0002;
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#16313d';
+    for (let i=0;i<8;i++){
+      const x = (i*140 - (t*60)%140);
+      ctx.fillRect(x, groundY-22, 90, 10);
+      ctx.fillRect(x+30, groundY-36, 60, 8);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Improved whitetail deer (longer legs, bigger rack)
+  function drawDeer(){
+    const {x,y,w,h} = deer;
+    ctx.save();
+
+    // slight stretch in air
+    const airborne = !deer.onGround;
+    const scaleY = airborne ? 0.97 : 1.00;
+    const scaleX = airborne ? 1.03 : 1.00;
+    ctx.translate(x + w/2, y + h/2);
+    ctx.scale(scaleX, scaleY);
+    ctx.translate(-(x + w/2), -(y + h/2));
+
+    // body
+    ctx.fillStyle = '#8f6b4b';
+    roundedRect(x+8, y+10, w-16, h-16, 10, true);
+
+    // underside
+    ctx.fillStyle = '#ede6d9';
+    roundedRect(x+18, y+22, w-42, 12, 6, true);
+
+    // neck
+    ctx.fillStyle = '#8f6b4b';
+    roundedRect(x + w - 34, y + 6, 16, 24, 6, true);
+
+    // head
+    ctx.fillStyle = '#a88561';
+    roundedRect(x + w - 32, y - 4, 24, 18, 6, true);
+
+    // muzzle
+    ctx.fillStyle = '#755a42';
+    roundedRect(x + w - 14, y + 2, 12, 8, 3, true);
+
+    // ear
+    ctx.fillStyle = '#a88561';
+    ctx.beginPath();
+    ctx.moveTo(x + w - 26, y - 8);
+    ctx.lineTo(x + w - 12, y - 18);
+    ctx.lineTo(x + w - 8,  y - 2);
+    ctx.closePath(); ctx.fill();
+
+    // eye
+    ctx.fillStyle = '#0b1b24';
+    ctx.beginPath(); ctx.arc(x + w - 10, y + 0, 2.2, 0, Math.PI*2); ctx.fill();
+
+    // bigger rack
+    ctx.strokeStyle = '#e9dec3';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    // beams
+    ctx.moveTo(x + w - 20, y - 6); ctx.lineTo(x + w - 36, y - 30);
+    ctx.moveTo(x + w - 12, y - 6); ctx.lineTo(x + w + 6,  y - 30);
+    // tines
+    const tines = [
+      [ -30, -24, -38, -30 ], [ -26, -18, -34, -24 ],
+      [ -22, -12, -30, -16 ], [   2, -24,  10, -30 ],
+      [   6, -18,  14, -24 ], [  10, -12, 18, -16 ],
+    ];
+    for (const d of tines){ ctx.moveTo(x + w + d[0], y + d[1]); ctx.lineTo(x + w + d[2], y + d[3]); }
+    ctx.stroke();
+
+    // tail
+    ctx.fillStyle = '#ede6d9';
+    roundedRect(x + 6, y + 6, 8, 10, 4, true);
+
+    // legs (longer)
+    const legY = y + h - 2;
+    ctx.strokeStyle = '#7c5e44';
+    ctx.lineWidth = 4;
+    const swing = Math.sin(performance.now()*0.02) * (deer.onGround ? 3 : 1);
+    const legOffsets = [6, 18, 36, 48];
+    for (let i=0;i<4;i++){
+      const lx = x + legOffsets[i] + ((i%2===0) ? swing : -swing);
+      ctx.beginPath(); ctx.moveTo(lx, legY-12); ctx.lineTo(lx, legY+12); ctx.stroke();
+    }
+
+    // shadow
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(x + w/2, y + h + 10, 24, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function roundedRect(x,y,w,h,r,fill=true){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y,   x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x,   y+h, r);
+    ctx.arcTo(x,   y+h, x,   y,   r);
+    ctx.arcTo(x,   y,   x+w, y,   r);
+    if (fill) ctx.fill(); else ctx.stroke();
+  }
+
+  // Hunter (rifle faces LEFT; blaze orange)
+  function drawHunter(){
+    const h = hunter;
+    ctx.save();
+    ctx.translate(h.x, h.y);
+
+    // legs/boots
+    ctx.strokeStyle = '#2f3a40'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(12, 58); ctx.lineTo(12, 44); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(28, 58); ctx.lineTo(28, 44); ctx.stroke();
+
+    // torso (blaze orange)
+    ctx.fillStyle = 'var(--orange)';
+    roundedRect(6, 22, 30, 24, 6, true);
+
+    // head
+    ctx.fillStyle = '#d8b387';
+    ctx.beginPath(); ctx.arc(21, 12, 8, 0, Math.PI*2); ctx.fill();
+
+    // hat (blaze orange)
+    ctx.fillStyle = 'var(--orange)';
+    roundedRect(14, 4, 16, 6, 2, true);
+    ctx.fillRect(12, 8, 16, 2);
+
+    const firing = h.fireTimer > 0;
+
+    if (h.weapon === 'bow'){
+      // arms
+      ctx.strokeStyle = 'var(--orange)'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(10, 30); ctx.lineTo(4, 28); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(30, 30); ctx.lineTo(firing ? 12 : 18, firing ? 26 : 28); ctx.stroke();
+      // bow + string (facing left)
+      ctx.strokeStyle = '#a17a52'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(4, 20); ctx.quadraticCurveTo(0, 30, 4, 40); ctx.stroke();
+      ctx.strokeStyle = '#c7c7c7'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(4, 20); ctx.lineTo(4, 40); ctx.stroke();
+      if (firing){ ctx.fillStyle = '#f0f6ff'; ctx.beginPath(); ctx.arc(6, 30, 3, 0, Math.PI*2); ctx.fill(); }
+    } else {
+      // RIFLE facing LEFT
+      // stock/body near hands
+      ctx.fillStyle = '#835d3a'; roundedRect(10, 26, 22, 6, 2, true);
+      // barrel extends LEFT from stock
+      ctx.fillStyle = '#a27b51'; ctx.fillRect(-12, 24, 22, 4);
+      // arms
+      ctx.strokeStyle = 'var(--orange)'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(14, 30); ctx.lineTo(6, 28); ctx.stroke(); // front hand toward muzzle
+      ctx.beginPath(); ctx.moveTo(20, 30); ctx.lineTo(14, 30); ctx.stroke(); // rear hand at stock
+      // muzzle flash LEFT
+      if (firing){
+        ctx.fillStyle = '#ffd966';
+        ctx.beginPath();
+        ctx.moveTo(-12, 24); ctx.lineTo(-18, 22); ctx.lineTo(-18, 26);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawObstacle(o){
+    if (o.type === 'arrow'){
+      // ARROW facing LEFT
+      // shaft
+      ctx.fillStyle = '#cfcfcf';
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+      // broadhead tip (triangle) on the LEFT end
+      ctx.fillStyle = '#b0b7bc';
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y + o.h/2);            // tip
+      ctx.lineTo(o.x + o.tip, o.y);            // top edge
+      ctx.lineTo(o.x + o.tip, o.y + o.h);      // bottom edge
+      ctx.closePath(); ctx.fill();
+      // fletching (feathers) on the right end
+      ctx.fillStyle = '#76d7ea';
+      ctx.fillRect(o.x + o.w - 4, o.y - 4, 8, o.h + 8);
+      // feather lines
+      ctx.strokeStyle = 'rgba(255,255,255,.5)';
+      ctx.lineWidth = 1;
+      for (let i=0;i<3;i++){
+        ctx.beginPath();
+        ctx.moveTo(o.x + o.w - 2, o.y - 2 + i*6);
+        ctx.lineTo(o.x + o.w + 2, o.y + o.h + 2 - i*6);
+        ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = '#c0c7cc';
+      ctx.beginPath();
+      ctx.arc(o.x + o.r, o.y + o.r, o.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      ctx.beginPath();
+      ctx.arc(o.x + o.r - 3, o.y + o.r - 3, o.r*0.5, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  function update(dt){
+    if (paused || !running) return;
+
+    // speed ramp
+    speed += 6 * dt;
+
+    // jump helpers
+    if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
+    if (coyoteTimer > 0) coyoteTimer -= dt;
+
+    // hunter timers
+    if (hunter.fireTimer > 0) hunter.fireTimer -= dt;
+    maybeSwapWeapon(dt);
+
+    // spawn cadence
+    spawnTimer -= dt;
+    if (spawnTimer <= 0){
+      spawnObstacle();
+      const baseGap = Math.max(0.70, 1.5 - speed/600);
+      spawnTimer = baseGap + Math.random()*0.45;
+    }
+
+    // gravity & movement
+    const wasAirborne = !deer.onGround;
+    deer.vy += 1650 * dt;
+    deer.y += deer.vy * dt;
+
+    // landing
+    if (deer.y + deer.h >= groundY){
+      if (wasAirborne) spawnDust(deer.x + deer.w*0.4, groundY - 2);
+      deer.y = groundY - deer.h;
+      deer.vy = 0;
+      if (!deer.onGround) { deer.onGround = true; jumpBufferTimer = 0; } // landed; clear buffer after landing executed
+    } else {
+      if (deer.onGround) { coyoteTimer = COYOTE_TIME; }
+      deer.onGround = false;
+    }
+
+    // if we have a queued jump and conditions allow, jump now
+    tryPerformJump();
+
+    // projectiles
+    for (let i=obstacles.length-1; i>=0; i--){
+      const o = obstacles[i];
+      o.x += o.vx * dt;
+      if (o.x + (o.w || o.r*2) < -40) obstacles.splice(i,1);
+    }
+
+    // particles
+    updateDust(dt);
+
+    // score & collision
+    score += Math.floor(220 * dt);
+    scoreEl.textContent = 'Score: ' + score;
+
+    const deerBox = {x:deer.x+2, y:deer.y+2, w:deer.w-4, h:deer.h-4};
+    for (const o of obstacles){
+      if (o.type === 'bullet'){
+        const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
+        if (aabb(deerBox, bb)) return endGame();
+      } else {
+        const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
+        if (aabb(deerBox, ab)) return endGame();
+      }
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // subtle stars
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#bde7f2';
+    for (let i=0;i<40;i++){
+      const x = (i*23 + (performance.now()*0.02)) % W;
+      const y = (i*37 % (groundY-60)) * 0.9;
+      ctx.fillRect(x, y*0.5 + 10, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    drawGround();
+    drawDeer();
+    drawHunter();
+    for (const o of obstacles) drawObstacle(o);
+    drawDust();
+  }
+
+  function loop(tNow){
+    if (!running){ return; }
+    const dt = Math.min((tNow - tPrev)/1000, 0.033);
+    tPrev = tNow;
+    update(dt);
+    draw();
+    if (!gameOver) requestAnimationFrame(loop);
+  }
+
+  // init
+  showTitle();
+
+})();
+</script>
+</body>
+</html>
