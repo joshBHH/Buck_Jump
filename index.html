@@ -13,7 +13,7 @@
     width: min(95vw, 1000px); aspect-ratio: 9 / 4;
     background: linear-gradient(#102833, #0b1b24 60%) no-repeat;
     border-radius:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35);
-    touch-action: none; /* remove mobile delay / gestures */
+    touch-action: none; /* eliminate mobile tap delay/gestures */
   }
   .hud {
     position: absolute; inset: 0; display:flex; align-items:flex-start; justify-content:space-between;
@@ -183,7 +183,7 @@
   // Deer (longer legs & bigger rack)
   const deer = { x: 90, y: groundY - 48, w: 60, h: 48, vy: 0, onGround: true };
 
-  // Hunter (right side, blaze orange)
+  // Hunter (right side, blaze orange + camo pants)
   const hunter = { x: W - 120, y: groundY - 60, w: 50, h: 60, weapon: 'bow', fireTimer: 0 };
 
   const obstacles = []; // projectiles
@@ -191,17 +191,15 @@
 
   // ======= Input: ultra-responsive tap anywhere on canvas =======
   // Jump buffering & coyote time for responsiveness
-  const JUMP_BUFFER = 0.12;   // seconds allowed to buffer a jump before landing
-  const COYOTE_TIME = 0.10;   // seconds allowed to jump after leaving ground
+  const JUMP_BUFFER = 0.12;   // seconds buffer before landing
+  const COYOTE_TIME = 0.10;   // seconds after leaving ground
   let jumpBufferTimer = 0;
   let coyoteTimer = 0;
 
-  function requestJump(){
-    jumpBufferTimer = JUMP_BUFFER; // set a short window to convert to actual jump
-  }
+  function requestJump(){ jumpBufferTimer = JUMP_BUFFER; }
   function tryPerformJump(){
     if ((deer.onGround || coyoteTimer > 0) && jumpBufferTimer > 0){
-      deer.vy = -560; // slightly snappier
+      deer.vy = -560;
       deer.onGround = false;
       jumpBufferTimer = 0;
       coyoteTimer = 0;
@@ -215,15 +213,10 @@
     if (e.code === 'Enter') { if (!running || gameOver) startGame(true); }
   }, {passive:false});
 
-  // Pointer: tap anywhere on canvas to jump
-  // Avoid stealing taps on the sidePanel (name/clear buttons)
-  function isInside(el, target){
-    while (target){ if (target === el) return true; target = target.parentElement; }
-    return false;
-  }
+  // Pointer: tap anywhere except in the side panel
+  function isInside(el, target){ while (target){ if (target === el) return true; target = target.parentElement; } return false; }
   window.addEventListener('pointerdown', (e) => {
-    const target = e.target;
-    if (isInside(sidePanel, target)) return; // ignore taps in scoreboard UI
+    if (isInside(sidePanel, e.target)) return;
     requestJump();
   }, {passive:true});
 
@@ -327,10 +320,10 @@
     hunter.fireTimer = 0.18;
 
     if (type === 'arrow'){
-      const h = 10, w = 44; // a bit longer
+      const h = 12, w = 48; // sleeker, longer arrow
       obstacles.push({
-        type, x: origin.x - w, y: origin.y - 5, w, h,
-        vx: -(speed + rand(0, 40)), tip: 12
+        type, x: origin.x - w, y: origin.y - 6, w, h,
+        vx: -(speed + rand(0, 40)), tip: 14
       });
     } else {
       const size = 12, spray = rand(-8, 2);
@@ -342,7 +335,7 @@
   }
   function weaponMuzzle(h){
     if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };         // left-release
-    return { x: h.x - 6, y: h.y + 24 }; // rifle muzzle to the LEFT of the body
+    return { x: h.x - 6, y: h.y + 24 }; // rifle muzzle to the LEFT
   }
 
   function aabb(a,b){
@@ -493,18 +486,25 @@
     if (fill) ctx.fill(); else ctx.stroke();
   }
 
-  // Hunter (rifle faces LEFT; blaze orange)
+  // Hunter (camo pants, orange vest & hat). Rifle faces LEFT.
   function drawHunter(){
     const h = hunter;
     ctx.save();
     ctx.translate(h.x, h.y);
 
-    // legs/boots
-    ctx.strokeStyle = '#2f3a40'; ctx.lineWidth = 5;
-    ctx.beginPath(); ctx.moveTo(12, 58); ctx.lineTo(12, 44); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(28, 58); ctx.lineTo(28, 44); ctx.stroke();
+    // CAMO pants (legs)
+    ctx.fillStyle = '#3a4a3a'; // base green
+    ctx.fillRect(10, 44, 8, 14);
+    ctx.fillRect(26, 44, 8, 14);
+    // Boots
+    ctx.fillStyle = '#2f2f2f';
+    ctx.fillRect(10, 58, 8, 6);
+    ctx.fillRect(26, 58, 8, 6);
+    // simple camo blotches
+    ctx.fillStyle = '#4f5c2f'; ctx.fillRect(12, 48, 4, 4); ctx.fillRect(28, 50, 3, 5);
+    ctx.fillStyle = '#6b7d42'; ctx.fillRect(11, 53, 5, 3); ctx.fillRect(27, 55, 4, 3);
 
-    // torso (blaze orange)
+    // torso (blaze orange vest)
     ctx.fillStyle = 'var(--orange)';
     roundedRect(6, 22, 30, 24, 6, true);
 
@@ -520,27 +520,27 @@
     const firing = h.fireTimer > 0;
 
     if (h.weapon === 'bow'){
-      // arms
+      // arms (orange sleeves)
       ctx.strokeStyle = 'var(--orange)'; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(10, 30); ctx.lineTo(4, 28); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(30, 30); ctx.lineTo(firing ? 12 : 18, firing ? 26 : 28); ctx.stroke();
+
       // bow + string (facing left)
       ctx.strokeStyle = '#a17a52'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(4, 20); ctx.quadraticCurveTo(0, 30, 4, 40); ctx.stroke();
       ctx.strokeStyle = '#c7c7c7'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(4, 20); ctx.lineTo(4, 40); ctx.stroke();
+
       if (firing){ ctx.fillStyle = '#f0f6ff'; ctx.beginPath(); ctx.arc(6, 30, 3, 0, Math.PI*2); ctx.fill(); }
     } else {
       // RIFLE facing LEFT
-      // stock/body near hands
-      ctx.fillStyle = '#835d3a'; roundedRect(10, 26, 22, 6, 2, true);
-      // barrel extends LEFT from stock
-      ctx.fillStyle = '#a27b51'; ctx.fillRect(-12, 24, 22, 4);
+      ctx.fillStyle = '#835d3a'; roundedRect(10, 26, 22, 6, 2, true);  // stock/body
+      ctx.fillStyle = '#a27b51'; ctx.fillRect(-12, 24, 22, 4);         // barrel to the LEFT
       // arms
       ctx.strokeStyle = 'var(--orange)'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(14, 30); ctx.lineTo(6, 28); ctx.stroke(); // front hand toward muzzle
-      ctx.beginPath(); ctx.moveTo(20, 30); ctx.lineTo(14, 30); ctx.stroke(); // rear hand at stock
-      // muzzle flash LEFT
+      ctx.beginPath(); ctx.moveTo(14, 30); ctx.lineTo(6, 28); ctx.stroke(); // front hand near muzzle
+      ctx.beginPath(); ctx.moveTo(20, 30); ctx.lineTo(14, 30); ctx.stroke(); // rear hand
+      // muzzle flash (LEFT)
       if (firing){
         ctx.fillStyle = '#ffd966';
         ctx.beginPath();
@@ -552,40 +552,61 @@
     ctx.restore();
   }
 
+  // Upgraded arrows & bullets
   function drawObstacle(o){
     if (o.type === 'arrow'){
-      // ARROW facing LEFT
-      // shaft
-      ctx.fillStyle = '#cfcfcf';
-      ctx.fillRect(o.x, o.y, o.w, o.h);
-      // broadhead tip (triangle) on the LEFT end
-      ctx.fillStyle = '#b0b7bc';
+      // === Arrow facing LEFT ===
+      const shaftY = o.y + o.h/3;
+      const shaftH = o.h/3;
+
+      // Wooden shaft gradient
+      const shaftGrad = ctx.createLinearGradient(o.x, shaftY, o.x + o.w, shaftY);
+      shaftGrad.addColorStop(0, '#8b5a2b');
+      shaftGrad.addColorStop(1, '#deb887');
+      ctx.fillStyle = shaftGrad;
+      ctx.fillRect(o.x, shaftY, o.w, shaftH);
+
+      // Broadhead (metal tip) on LEFT
+      const tipGrad = ctx.createLinearGradient(o.x, o.y, o.x + o.tip, o.y);
+      tipGrad.addColorStop(0, '#d0d3d4');
+      tipGrad.addColorStop(1, '#9fa4a8');
+      ctx.fillStyle = tipGrad;
       ctx.beginPath();
-      ctx.moveTo(o.x, o.y + o.h/2);            // tip
-      ctx.lineTo(o.x + o.tip, o.y);            // top edge
-      ctx.lineTo(o.x + o.tip, o.y + o.h);      // bottom edge
+      ctx.moveTo(o.x, o.y + o.h/2);         // tip point (leftmost)
+      ctx.lineTo(o.x + o.tip, o.y);         // top edge
+      ctx.lineTo(o.x + o.tip, o.y + o.h);   // bottom edge
       ctx.closePath(); ctx.fill();
-      // fletching (feathers) on the right end
-      ctx.fillStyle = '#76d7ea';
-      ctx.fillRect(o.x + o.w - 4, o.y - 4, 8, o.h + 8);
-      // feather lines
-      ctx.strokeStyle = 'rgba(255,255,255,.5)';
-      ctx.lineWidth = 1;
-      for (let i=0;i<3;i++){
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.stroke();
+
+      // Fletching (3 small feathers) at right end
+      ctx.fillStyle = '#5ecdf2';
+      for (let i=0; i<3; i++){
         ctx.beginPath();
-        ctx.moveTo(o.x + o.w - 2, o.y - 2 + i*6);
-        ctx.lineTo(o.x + o.w + 2, o.y + o.h + 2 - i*6);
-        ctx.stroke();
+        ctx.moveTo(o.x + o.w, o.y + i*4);
+        ctx.lineTo(o.x + o.w + 8, o.y + 2 + i*4);
+        ctx.lineTo(o.x + o.w, o.y + 4 + i*4);
+        ctx.closePath();
+        ctx.fill();
       }
     } else {
-      ctx.fillStyle = '#c0c7cc';
-      ctx.beginPath();
-      ctx.arc(o.x + o.r, o.y + o.r, o.r, 0, Math.PI*2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.35)';
-      ctx.beginPath();
-      ctx.arc(o.x + o.r - 3, o.y + o.r - 3, o.r*0.5, 0, Math.PI*2);
-      ctx.fill();
+      // === Bullet === (brass casing + darker tip + highlight)
+      const cx = o.x + o.r, cy = o.y + o.r;
+
+      // Brass casing gradient
+      const casingGrad = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.r*2);
+      casingGrad.addColorStop(0, '#d4af37');
+      casingGrad.addColorStop(1, '#b8860b');
+
+      ctx.fillStyle = casingGrad;
+      ctx.beginPath(); ctx.arc(cx, cy, o.r, 0, Math.PI*2); ctx.fill();
+
+      // Lead tip
+      ctx.fillStyle = '#555';
+      ctx.beginPath(); ctx.arc(cx, cy, o.r*0.6, 0, Math.PI*2); ctx.fill();
+
+      // Gloss highlight
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath(); ctx.arc(cx - 2, cy - 3, o.r*0.4, 0, Math.PI*2); ctx.stroke();
     }
   }
 
@@ -621,7 +642,7 @@
       if (wasAirborne) spawnDust(deer.x + deer.w*0.4, groundY - 2);
       deer.y = groundY - deer.h;
       deer.vy = 0;
-      if (!deer.onGround) { deer.onGround = true; jumpBufferTimer = 0; } // landed; clear buffer after landing executed
+      if (!deer.onGround) { deer.onGround = true; jumpBufferTimer = 0; }
     } else {
       if (deer.onGround) { coyoteTimer = COYOTE_TIME; }
       deer.onGround = false;
@@ -650,6 +671,7 @@
         const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
         if (aabb(deerBox, bb)) return endGame();
       } else {
+        // include tip reach
         const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
         if (aabb(deerBox, ab)) return endGame();
       }
