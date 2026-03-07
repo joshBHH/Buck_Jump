@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -12,7 +11,7 @@
   .stage { position:relative; display:flex; gap:10px; align-items:flex-start; }
   canvas {
     width: min(95vw, 1000px); aspect-ratio: 9 / 4;
-    background: linear-gradient(#102833, #0b1b24 60%) no-repeat;
+    background: #102833;
     border-radius:16px; box-shadow: 0 8px 30px rgba(0,0,0,.35);
     touch-action: none; /* eliminate mobile tap delay/gestures */
   }
@@ -101,9 +100,8 @@
       <div class="scoresList" id="scoresList"></div>
       <div class="panelBtns">
         <button class="btn" id="clearBtn" style="padding:6px 10px;">Clear Board</button>
-        <button class="btn" id="demoAddBtn" style="padding:6px 10px;">Add Test</button>
       </div>
-      <div class="mini muted" style="margin-top:6px">Scores save automatically on Game Over.</div>
+      <div class="mini muted" style="margin-top:6px">Scores save automatically on Game Over (this browser/device).</div>
     </div>
   </div>
 </div>
@@ -128,20 +126,23 @@
   const bestLabel = document.getElementById('bestLabel');
   const scoresList = document.getElementById('scoresList');
   const clearBtn = document.getElementById('clearBtn');
-  const demoAddBtn = document.getElementById('demoAddBtn');
   const sidePanel = document.getElementById('sidePanel');
 
   // Storage keys
-  const HS_KEY = 'whitetail_hiscore_v3';
-  const SCORES_KEY = 'whitetail_scoreboard_v3';
-  const NAME_KEY = 'whitetail_player_name_v3';
+  const HS_KEY = 'whitetail_hiscore_v4';
+  const SCORES_KEY = 'whitetail_scoreboard_v4';
+  const NAME_KEY = 'whitetail_player_name_v4';
 
   // Load persistent data
   let hiScore = Number(localStorage.getItem(HS_KEY) || 0);
-  let savedName = (localStorage.getItem(NAME_KEY) || 'YOU').toUpperCase().slice(0,8);
+  let savedName = normalizeName(localStorage.getItem(NAME_KEY) || 'YOU');
   nameInput.value = savedName;
   hiscoreEl.textContent = 'Best: ' + hiScore;
-  bestLabel.textContent = hiScore;
+  bestLabel.textContent = 0;
+
+  function normalizeName(name){
+    return (name || 'YOU').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0,8) || 'YOU';
+  }
 
   function loadScores(){
     try { return JSON.parse(localStorage.getItem(SCORES_KEY) || '[]'); }
@@ -150,26 +151,42 @@
   function saveScores(arr){ localStorage.setItem(SCORES_KEY, JSON.stringify(arr)); }
   function addScore(name, score){
     const scores = loadScores();
-    scores.push({ name: (name||'YOU').slice(0,8).toUpperCase(), score, date: Date.now() });
+    scores.push({ name: normalizeName(name), score, date: Date.now() });
     scores.sort((a,b) => b.score - a.score);
-    saveScores(scores.slice(0, 10));
+    saveScores(scores.slice(0, 25));
     renderScores();
+  }
+  function getPersonalBest(name){
+    const target = normalizeName(name);
+    return loadScores()
+      .filter((s) => normalizeName(s.name) === target)
+      .reduce((best, s) => Math.max(best, Number(s.score) || 0), 0);
+  }
+  function formatDate(ts){
+    const d = new Date(ts || Date.now());
+    return `${d.getMonth()+1}/${d.getDate()}`;
   }
   function renderScores(){
     const scores = loadScores();
     scoresList.innerHTML = scores.length
-      ? scores.map((s,i)=>`<div class="row"><div>#${i+1}. <b>${s.name}</b></div><div>${s.score}</div></div>`).join('')
+      ? scores.map((s,i)=>`<div class="row"><div>#${i+1}. <b>${normalizeName(s.name)}</b> <span class="mini muted">${formatDate(s.date)}</span></div><div>${s.score}</div></div>`).join('')
       : `<div class="mini muted">No scores yet — be the first!</div>`;
+
+    const currentName = normalizeName(nameInput.value || 'YOU');
+    bestLabel.textContent = getPersonalBest(currentName);
   }
   renderScores();
 
   nameInput.addEventListener('input', () => {
-    const v = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
+    const v = normalizeName(nameInput.value || 'YOU');
     nameInput.value = v;
     localStorage.setItem(NAME_KEY, v);
+    bestLabel.textContent = getPersonalBest(v);
   });
-  clearBtn.addEventListener('click', () => { localStorage.removeItem(SCORES_KEY); renderScores(); });
-  demoAddBtn.addEventListener('click', () => { addScore(nameInput.value || 'YOU', Math.floor(Math.random()*1000)); });
+  clearBtn.addEventListener('click', () => {
+    localStorage.removeItem(SCORES_KEY);
+    renderScores();
+  });
 
   // Game state
   const W = canvas.width, H = canvas.height;
@@ -189,6 +206,12 @@
 
   const obstacles = []; // projectiles
   const dust = [];      // landing dust particles
+
+  // Day/Night scene cycle
+  const SCENE_SWAP_MIN = 12;
+  const SCENE_SWAP_MAX = 20;
+  let isDayScene = true;
+  let sceneSwapTimer = rand(SCENE_SWAP_MIN, SCENE_SWAP_MAX);
 
   // ======= Input: ultra-responsive tap anywhere on canvas =======
   // Jump buffering & coyote time for responsiveness
@@ -285,11 +308,10 @@
       hiScore = score;
       localStorage.setItem(HS_KEY, String(hiScore));
       hiscoreEl.textContent = 'Best: ' + hiScore;
-      bestLabel.textContent = hiScore;
     }
 
     // Auto-save to scoreboard
-    const who = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
+    const who = normalizeName(nameInput.value || 'YOU');
     localStorage.setItem(NAME_KEY, who);
     addScore(who, score);
 
@@ -390,6 +412,53 @@
       ctx.fillRect(x+30, groundY-36, 60, 8);
     }
     ctx.globalAlpha = 1;
+  }
+
+  function drawSky(){
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+    if (isDayScene){
+      skyGrad.addColorStop(0, '#7bc8ff');
+      skyGrad.addColorStop(1, '#dff6ff');
+    } else {
+      skyGrad.addColorStop(0, '#102833');
+      skyGrad.addColorStop(1, '#0b1b24');
+    }
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, groundY);
+
+    const drift = (performance.now() * 0.008) % (W + 180);
+    const bodyX = W - drift;
+    const bodyY = isDayScene ? 68 : 74;
+
+    if (isDayScene){
+      ctx.fillStyle = '#ffd34d';
+      ctx.beginPath(); ctx.arc(bodyX, bodyY, 24, 0, Math.PI*2); ctx.fill();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (let i=0;i<4;i++){
+        const cx = (i * 230 + drift * 0.4) % (W + 140) - 70;
+        const cy = 36 + (i % 2) * 22;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 18, 0, Math.PI*2);
+        ctx.arc(cx + 20, cy - 4, 14, 0, Math.PI*2);
+        ctx.arc(cx + 38, cy, 16, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = '#f1f4ff';
+      ctx.beginPath(); ctx.arc(bodyX, bodyY, 20, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#102833';
+      ctx.beginPath(); ctx.arc(bodyX + 8, bodyY - 6, 16, 0, Math.PI*2); ctx.fill();
+
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#bde7f2';
+      for (let i=0;i<40;i++){
+        const x = (i*23 + (performance.now()*0.02)) % W;
+        const y = (i*37 % (groundY-60)) * 0.9;
+        ctx.fillRect(x, y*0.5 + 10, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Improved whitetail deer (longer legs, bigger rack)
@@ -617,6 +686,13 @@
     // speed ramp
     speed += 6 * dt;
 
+    // day/night cycle
+    sceneSwapTimer -= dt;
+    if (sceneSwapTimer <= 0){
+      isDayScene = !isDayScene;
+      sceneSwapTimer = rand(SCENE_SWAP_MIN, SCENE_SWAP_MAX);
+    }
+
     // jump helpers
     if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
     if (coyoteTimer > 0) coyoteTimer -= dt;
@@ -681,16 +757,7 @@
 
   function draw(){
     ctx.clearRect(0,0,W,H);
-
-    // subtle stars
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = '#bde7f2';
-    for (let i=0;i<40;i++){
-      const x = (i*23 + (performance.now()*0.02)) % W;
-      const y = (i*37 % (groundY-60)) * 0.9;
-      ctx.fillRect(x, y*0.5 + 10, 1, 1);
-    }
-    ctx.globalAlpha = 1;
+    drawSky();
 
     drawGround();
     drawDeer();
