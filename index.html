@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/index.html b/index.html
-index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70e1a9b1b6 100644
+index c80611d69af07783fc1781e79d814bceeb967b9b..97559ae26562766a2aa40245aa177c34144d900b 100644
 --- a/index.html
 +++ b/index.html
-@@ -1,716 +1,1181 @@
+@@ -1,716 +1,1187 @@
  <!doctype html>
  <html lang="en">
  <head>
@@ -242,6 +242,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70
 +  const DEFAULT_CHALLENGE = { label: 'Trailblazer', goal: 10, nearBonus: 60, speedBoost: 0 };
 +  let challengeProfile = DEFAULT_CHALLENGE;
 +  let soundtrackTick = 0;
++  let startGraceTimer = 0;
 +  let audioCtx = null;
 +  let masterGain = null;
 +  let biomeIndex = 0;
@@ -381,7 +382,8 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70
    function startGame(reset=false){
      if (reset) {
        obstacles.length = 0; dust.length = 0;
-       score = 0; speed = 300; spawnTimer = 0;
+-      score = 0; speed = 300; spawnTimer = 0;
++      score = 0; speed = 300; spawnTimer = 1.2;
        deer.x = 90; deer.y = groundY - deer.h; deer.vy = 0; deer.onGround = true;
        hunter.weapon = 'bow'; hunter.fireTimer = 0;
 -      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
@@ -394,6 +396,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70
 +      antlerBoostTimer = 0;
 +      companion.active = false; companion.x = -120;
 +      nearMissMultiplier = 1; nearMissTimer = 0;
++      startGraceTimer = 1.35;
 +      cleanLandingStreak = 0; objectivesCompleted = 0; goalTarget = challengeProfile?.goal || DEFAULT_CHALLENGE.goal;
 +      biomeIndex = 0;
 +      eventTextEl.style.opacity = '0';
@@ -1077,6 +1080,8 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70
      if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
      if (coyoteTimer > 0) coyoteTimer -= dt;
  
++    if (startGraceTimer > 0) startGraceTimer -= dt;
++
 +    if (nearMissTimer > 0){
 +      nearMissTimer -= dt;
 +      if (nearMissTimer <= 0 && nearMissMultiplier > 1){
@@ -1216,14 +1221,24 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..cfe1f64ca865663db0d2ccdf69a78c70
 +    scoreEl.textContent = 'Score: ' + score + '  •  Combo x' + nearMissMultiplier.toFixed(1);
  
      const deerBox = {x:deer.x+2, y:deer.y+2, w:deer.w-4, h:deer.h-4};
-     for (const o of obstacles){
-       if (o.type === 'bullet'){
-         const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
-         if (aabb(deerBox, bb)) return endGame();
-       } else {
-         // include tip reach
-         const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
-         if (aabb(deerBox, ab)) return endGame();
+-    for (const o of obstacles){
+-      if (o.type === 'bullet'){
+-        const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
+-        if (aabb(deerBox, bb)) return endGame();
+-      } else {
+-        // include tip reach
+-        const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
+-        if (aabb(deerBox, ab)) return endGame();
++    if (startGraceTimer <= 0){
++      for (const o of obstacles){
++        if (o.type === 'bullet'){
++          const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
++          if (aabb(deerBox, bb)) return endGame();
++        } else {
++          // include tip reach
++          const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
++          if (aabb(deerBox, ab)) return endGame();
++        }
        }
      }
    }
