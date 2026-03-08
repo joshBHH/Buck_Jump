@@ -1,4 +1,5 @@
 diff --git a/index.html b/index.html
+cat /workspace/Buck_Jump/index.html
 index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d0755ee6f0b3 100644
 --- a/index.html
 +++ b/index.html
@@ -40,7 +41,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      user-select:none;
    }
    .btn:active { transform: translateY(1px); }
- 
+
    /* Always-visible scoreboard panel */
    .sidePanel {
      color:var(--ui);
@@ -69,7 +70,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    text-shadow:0 3px 14px rgba(0,0,0,.65); opacity:0; pointer-events:none;
 +    transition: opacity .18s ease, transform .18s ease; z-index:7;
 +  }
- 
+
    @media (max-width: 980px){
      .stage { flex-direction:column; align-items:center; }
      .sidePanel { width: min(92vw, 340px); }
@@ -85,13 +86,13 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
    <div class="stage">
      <div style="position:relative">
        <canvas id="game" width="900" height="400" aria-label="Whitetail Runner"></canvas>
- 
+
        <div class="hud">
          <div id="score">Score: 0</div>
 +        <div id="gear">Jumps: 0 • Gear: Starter</div>
          <div id="hiscore">Best: 0</div>
        </div>
- 
+
 +      <div class="eventText" id="eventText" aria-live="polite"></div>
 +
        <div class="centerMsg" id="centerMsg">
@@ -107,7 +108,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
          </div>
        </div>
      </div>
- 
+
      <!-- Always-visible scoreboard panel -->
      <div class="sidePanel" id="sidePanel">
        <h3>High Scores</h3>
@@ -126,12 +127,12 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      </div>
    </div>
  </div>
- 
+
  <script>
  (() => {
    const canvas = document.getElementById('game');
    const ctx = canvas.getContext('2d');
- 
+
    // UI refs
    const scoreEl = document.getElementById('score');
    const hiscoreEl = document.getElementById('hiscore');
@@ -139,11 +140,11 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
    const centerMsg = document.getElementById('centerMsg');
    const panelContent = document.getElementById('panelContent');
 +  const eventTextEl = document.getElementById('eventText');
- 
+
    const startBtn = document.getElementById('startBtn');
    const pauseBtn = document.getElementById('pauseBtn');
    const restartBtn = document.getElementById('restartBtn');
- 
+
    // Scoreboard panel refs
    const nameInput = document.getElementById('nameInput');
    const bestLabel = document.getElementById('bestLabel');
@@ -151,7 +152,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
    const clearBtn = document.getElementById('clearBtn');
 -  const demoAddBtn = document.getElementById('demoAddBtn');
    const sidePanel = document.getElementById('sidePanel');
- 
+
    // Storage keys
 -  const HS_KEY = 'whitetail_hiscore_v3';
 -  const SCORES_KEY = 'whitetail_scoreboard_v3';
@@ -159,7 +160,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +  const HS_KEY = 'whitetail_hiscore_v4';
 +  const SCORES_KEY = 'whitetail_scoreboard_v4';
 +  const NAME_KEY = 'whitetail_player_name_v4';
- 
+
    // Load persistent data
    let hiScore = Number(localStorage.getItem(HS_KEY) || 0);
 -  let savedName = (localStorage.getItem(NAME_KEY) || 'YOU').toUpperCase().slice(0,8);
@@ -172,7 +173,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +  function normalizeName(name){
 +    return (name || 'YOU').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0,8) || 'YOU';
 +  }
- 
+
    function loadScores(){
      try { return JSON.parse(localStorage.getItem(SCORES_KEY) || '[]'); }
      catch { return []; }
@@ -208,7 +209,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    bestLabel.textContent = getPersonalBest(currentName);
    }
    renderScores();
- 
+
    nameInput.addEventListener('input', () => {
 -    const v = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
 +    const v = normalizeName(nameInput.value || 'YOU');
@@ -222,7 +223,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
    });
 -  clearBtn.addEventListener('click', () => { localStorage.removeItem(SCORES_KEY); renderScores(); });
 -  demoAddBtn.addEventListener('click', () => { addScore(nameInput.value || 'YOU', Math.floor(Math.random()*1000)); });
- 
+
    // Game state
    const W = canvas.width, H = canvas.height;
    const groundY = H - 64;
@@ -258,24 +259,24 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    { jumps: 25, label: 'Midnight Ops Set' },
 +    { jumps: 38, label: 'Mythic Set' }
 +  ];
- 
+
    // Weapon swap rates (seconds)
    const SWAP_MIN = 4, SWAP_MAX = 7;
 -  let nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
 +  let nextSwapIn = 0;
- 
+
    // Deer (longer legs & bigger rack)
 -  const deer = { x: 90, y: groundY - 48, w: 60, h: 48, vy: 0, onGround: true };
 +  const deer = { x: 90, y: groundY - 48, w: 60, h: 48, vy: 0, onGround: true, jumpedThisAir: false };
 +  const companion = { active:false, x:-120, y:groundY - 44, w:52, h:44 };
 +  let antlerBoostTimer = 0;
- 
+
    // Hunter (right side, blaze orange + camo pants)
    const hunter = { x: W - 120, y: groundY - 60, w: 50, h: 60, weapon: 'bow', fireTimer: 0 };
- 
+
    const obstacles = []; // projectiles
    const dust = [];      // landing dust particles
- 
+
 +  // Day/Night scene cycle
 +  const SCENE_SWAP_MIN = 12;
 +  const SCENE_SWAP_MAX = 20;
@@ -288,7 +289,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
    const COYOTE_TIME = 0.10;   // seconds after leaving ground
    let jumpBufferTimer = 0;
    let coyoteTimer = 0;
- 
+
 -  function requestJump(){ jumpBufferTimer = JUMP_BUFFER; }
 +
 +  function currentGearTier(){
@@ -314,33 +315,33 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
        coyoteTimer = 0;
      }
    }
- 
+
    // Keyboard
    window.addEventListener('keydown', e => {
      if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); requestJump(); }
      if (e.code === 'KeyP') togglePause();
      if (e.code === 'Enter') { if (!running || gameOver) startGame(true); }
    }, {passive:false});
- 
+
    // Pointer: tap anywhere except in the side panel
    function isInside(el, target){ while (target){ if (target === el) return true; target = target.parentElement; } return false; }
    window.addEventListener('pointerdown', (e) => {
      if (isInside(sidePanel, e.target)) return;
      requestJump();
    }, {passive:true});
- 
+
    // Controls
 -  startBtn.addEventListener('click', () => startGame(!gameOver));
 +  startBtn.addEventListener('click', () => startGame(true));
    pauseBtn.addEventListener('click', togglePause);
    restartBtn.addEventListener('click', () => startGame(true));
- 
+
    function togglePause(){
      if (!running || gameOver) return;
      paused = !paused;
      if (paused) showPause(); else hideCenter();
    }
- 
+
    function showPause(){
      panelContent.innerHTML = `
        <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Paused</h1>
@@ -354,7 +355,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      panelContent.querySelector('#resumeBtn').onclick = () => { paused = false; hideCenter(); };
      panelContent.querySelector('#restartBtn2').onclick = () => startGame(true);
    }
- 
+
    function showTitle(){
      panelContent.innerHTML = `
        <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
@@ -375,7 +376,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      panelContent.querySelector('#restartBtnX').onclick = () => startGame(true);
    }
    function hideCenter(){ centerMsg.style.display = 'none'; }
- 
+
    function startGame(reset=false){
      if (reset) {
        obstacles.length = 0; dust.length = 0;
@@ -406,23 +407,23 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      tPrev = performance.now();
      requestAnimationFrame(loop);
    }
- 
+
    function endGame(){
      gameOver = true; running = false;
- 
+
      if (score > hiScore) {
        hiScore = score;
        localStorage.setItem(HS_KEY, String(hiScore));
        hiscoreEl.textContent = 'Best: ' + hiScore;
 -      bestLabel.textContent = hiScore;
      }
- 
+
      // Auto-save to scoreboard
 -    const who = (nameInput.value || 'YOU').toUpperCase().slice(0,8);
 +    const who = normalizeName(nameInput.value || 'YOU');
      localStorage.setItem(NAME_KEY, who);
      addScore(who, score);
- 
+
      panelContent.innerHTML = `
        <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Game Over</h1>
        <p class="muted">Score: <b>${score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; Best: <b>${hiScore}</b></p>
@@ -433,7 +434,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      centerMsg.style.display = 'grid';
      panelContent.querySelector('#restartBtnG').onclick = () => startGame(true);
    }
- 
+
    // Helpers
    function rand(a,b){ return Math.random()*(b-a)+a; }
 +  function mulberry32(a){
@@ -490,7 +491,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    osc.connect(g); g.connect(masterGain);
 +    osc.start(t0); osc.stop(t0 + dur + 0.02);
 +  }
- 
+
    // Weapon logic
    function maybeSwapWeapon(dt){
      nextSwapIn -= dt;
@@ -504,7 +505,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      const origin = weaponMuzzle(hunter);
      const type = (hunter.weapon === 'bow') ? 'arrow' : 'bullet';
      hunter.fireTimer = 0.18;
- 
+
      if (type === 'arrow'){
        const h = 12, w = 48; // sleeker, longer arrow
        obstacles.push({
@@ -526,11 +527,11 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };         // left-release
      return { x: h.x - 6, y: h.y + 24 }; // rifle muzzle to the LEFT
    }
- 
+
    function aabb(a,b){
      return (a.x < b.x + b.w) && (a.x + a.w > b.x) && (a.y < b.y + b.h) && (a.y + a.h > b.y);
    }
- 
+
    // Dust particles
    function spawnDust(x, y){
      for (let i=0;i<10;i++){
@@ -565,7 +566,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      ctx.globalAlpha = 1;
      ctx.restore();
    }
- 
+
    function drawGround(){
 -    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ground');
 +    const biome = BIOMES[biomeIndex % BIOMES.length];
@@ -682,7 +683,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      }
 -    ctx.globalAlpha = 1;
    }
- 
+
    // Improved whitetail deer (longer legs, bigger rack)
    function drawDeer(){
      const {x,y,w,h} = deer;
@@ -695,7 +696,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    ];
 +    const dp = deerPalettes[Math.min(gearTier, deerPalettes.length-1)];
      ctx.save();
- 
+
      // slight stretch in air
      const airborne = !deer.onGround;
      const scaleY = airborne ? 0.97 : 1.00;
@@ -703,31 +704,31 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      ctx.translate(x + w/2, y + h/2);
      ctx.scale(scaleX, scaleY);
      ctx.translate(-(x + w/2), -(y + h/2));
- 
+
      // body
 -    ctx.fillStyle = '#8f6b4b';
 +    ctx.fillStyle = dp.body;
      roundedRect(x+8, y+10, w-16, h-16, 10, true);
- 
+
      // underside
      ctx.fillStyle = '#ede6d9';
      roundedRect(x+18, y+22, w-42, 12, 6, true);
- 
+
      // neck
 -    ctx.fillStyle = '#8f6b4b';
 +    ctx.fillStyle = dp.neck;
      roundedRect(x + w - 34, y + 6, 16, 24, 6, true);
- 
+
      // head
 -    ctx.fillStyle = '#a88561';
 +    ctx.fillStyle = dp.head;
      roundedRect(x + w - 32, y - 4, 24, 18, 6, true);
- 
+
      // muzzle
 -    ctx.fillStyle = '#755a42';
 +    ctx.fillStyle = dp.muzzle;
      roundedRect(x + w - 14, y + 2, 12, 8, 3, true);
- 
+
      // ear
      ctx.fillStyle = '#a88561';
      ctx.beginPath();
@@ -735,11 +736,11 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      ctx.lineTo(x + w - 12, y - 18);
      ctx.lineTo(x + w - 8,  y - 2);
      ctx.closePath(); ctx.fill();
- 
+
      // eye
      ctx.fillStyle = '#0b1b24';
      ctx.beginPath(); ctx.arc(x + w - 10, y + 0, 2.2, 0, Math.PI*2); ctx.fill();
- 
+
 -    // bigger rack
 +    // dynamic antlers (temporary antler rush boost)
 +    const antlerScale = antlerBoostTimer > 0 ? 1.45 : 1;
@@ -764,11 +765,11 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +      ctx.lineTo(x + w + d[2]*antlerScale, y + d[3]*antlerScale);
 +    }
      ctx.stroke();
- 
+
      // tail
      ctx.fillStyle = '#ede6d9';
      roundedRect(x + 6, y + 6, 8, 10, 4, true);
- 
+
      // legs (longer)
      const legY = y + h - 2;
 -    ctx.strokeStyle = '#7c5e44';
@@ -780,16 +781,16 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
        const lx = x + legOffsets[i] + ((i%2===0) ? swing : -swing);
        ctx.beginPath(); ctx.moveTo(lx, legY-12); ctx.lineTo(lx, legY+12); ctx.stroke();
      }
- 
+
      // shadow
      ctx.globalAlpha = 0.25;
      ctx.fillStyle = '#000';
      ctx.beginPath(); ctx.ellipse(x + w/2, y + h + 10, 24, 6, 0, 0, Math.PI*2); ctx.fill();
      ctx.globalAlpha = 1;
- 
+
      ctx.restore();
    }
- 
+
 +  function drawCompanionDeer(){
 +    if (!companion.active) return;
 +    const x = companion.x, y = companion.y, w = companion.w, h = companion.h;
@@ -879,7 +880,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      ctx.arcTo(x,   y,   x+w, y,   r);
      if (fill) ctx.fill(); else ctx.stroke();
    }
- 
+
    // Hunter (camo pants, orange vest & hat). Rifle faces LEFT.
    function drawHunter(){
      const h = hunter;
@@ -893,7 +894,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +    const hp = hunterPalettes[Math.min(gearTier, hunterPalettes.length-1)];
      ctx.save();
      ctx.translate(h.x, h.y);
- 
+
      // CAMO pants (legs)
 -    ctx.fillStyle = '#3a4a3a'; // base green
 +    ctx.fillStyle = hp.pants; // scaled gear skin
@@ -920,36 +921,36 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +      ctx.fillStyle = '#101010'; ctx.fillRect(11, 48, 7, 4); ctx.fillRect(26, 51, 8, 4);
 +      ctx.fillStyle = '#ffde57'; ctx.fillRect(12, 54, 5, 3); ctx.fillRect(28, 56, 4, 2);
 +    }
- 
+
      // torso (blaze orange vest)
 -    ctx.fillStyle = 'var(--orange)';
 +    ctx.fillStyle = hp.vest;
      roundedRect(6, 22, 30, 24, 6, true);
- 
+
      // head
      ctx.fillStyle = '#d8b387';
      ctx.beginPath(); ctx.arc(21, 12, 8, 0, Math.PI*2); ctx.fill();
- 
+
      // hat (blaze orange)
 -    ctx.fillStyle = 'var(--orange)';
 +    ctx.fillStyle = hp.hat;
      roundedRect(14, 4, 16, 6, 2, true);
      ctx.fillRect(12, 8, 16, 2);
- 
+
      const firing = h.fireTimer > 0;
- 
+
      if (h.weapon === 'bow'){
        // arms (orange sleeves)
        ctx.strokeStyle = 'var(--orange)'; ctx.lineWidth = 6;
        ctx.beginPath(); ctx.moveTo(10, 30); ctx.lineTo(4, 28); ctx.stroke();
        ctx.beginPath(); ctx.moveTo(30, 30); ctx.lineTo(firing ? 12 : 18, firing ? 26 : 28); ctx.stroke();
- 
+
        // bow + string (facing left)
        ctx.strokeStyle = '#a17a52'; ctx.lineWidth = 3;
        ctx.beginPath(); ctx.moveTo(4, 20); ctx.quadraticCurveTo(0, 30, 4, 40); ctx.stroke();
        ctx.strokeStyle = '#c7c7c7'; ctx.lineWidth = 1.5;
        ctx.beginPath(); ctx.moveTo(4, 20); ctx.lineTo(4, 40); ctx.stroke();
- 
+
        if (firing){ ctx.fillStyle = '#f0f6ff'; ctx.beginPath(); ctx.arc(6, 30, 3, 0, Math.PI*2); ctx.fill(); }
      } else {
        // RIFLE facing LEFT
@@ -967,10 +968,10 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
          ctx.closePath(); ctx.fill();
        }
      }
- 
+
      ctx.restore();
    }
- 
+
    // Upgraded arrows & bullets
    function drawObstacle(o){
      if (o.type === 'arrow'){
@@ -978,7 +979,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +      // high-contrast arrow (no hard outlines)
        const shaftY = o.y + o.h/3;
        const shaftH = o.h/3;
- 
+
 -      // Wooden shaft gradient
 +      // subtle motion trail for readability
 +      const trailGrad = ctx.createLinearGradient(o.x + o.w, o.y, o.x + o.w + 24, o.y);
@@ -994,7 +995,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +      shaftGrad.addColorStop(1, '#d2a16d');
        ctx.fillStyle = shaftGrad;
        ctx.fillRect(o.x, shaftY, o.w, shaftH);
- 
+
 -      // Broadhead (metal tip) on LEFT
        const tipGrad = ctx.createLinearGradient(o.x, o.y, o.x + o.tip, o.y);
 -      tipGrad.addColorStop(0, '#d0d3d4');
@@ -1030,35 +1031,35 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      } else {
        // === Bullet === (brass casing + darker tip + highlight)
        const cx = o.x + o.r, cy = o.y + o.r;
- 
+
 -      // Brass casing gradient
        const casingGrad = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.r*2);
        casingGrad.addColorStop(0, '#d4af37');
        casingGrad.addColorStop(1, '#b8860b');
- 
+
        ctx.fillStyle = casingGrad;
        ctx.beginPath(); ctx.arc(cx, cy, o.r, 0, Math.PI*2); ctx.fill();
 +      ctx.strokeStyle = 'rgba(20,34,40,0.8)';
 +      ctx.lineWidth = 1.4;
 +      ctx.beginPath(); ctx.arc(cx, cy, o.r, 0, Math.PI*2); ctx.stroke();
- 
+
 -      // Lead tip
        ctx.fillStyle = '#555';
        ctx.beginPath(); ctx.arc(cx, cy, o.r*0.6, 0, Math.PI*2); ctx.fill();
- 
+
 -      // Gloss highlight
        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
        ctx.beginPath(); ctx.arc(cx - 2, cy - 3, o.r*0.4, 0, Math.PI*2); ctx.stroke();
      }
    }
- 
+
    function update(dt){
 +
      if (paused || !running) return;
- 
+
      // speed ramp
      speed += 6 * dt;
- 
+
 +    // day/night cycle
 +    sceneSwapTimer -= dt;
 +    if (sceneSwapTimer <= 0){
@@ -1069,7 +1070,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      // jump helpers
      if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
      if (coyoteTimer > 0) coyoteTimer -= dt;
- 
+
 +    if (nearMissTimer > 0){
 +      nearMissTimer -= dt;
 +      if (nearMissTimer <= 0 && nearMissMultiplier > 1){
@@ -1094,7 +1095,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      // hunter timers
      if (hunter.fireTimer > 0) hunter.fireTimer -= dt;
      maybeSwapWeapon(dt);
- 
+
      // spawn cadence
      spawnTimer -= dt;
      if (spawnTimer <= 0){
@@ -1103,12 +1104,12 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 -      spawnTimer = baseGap + Math.random()*0.45;
 +      spawnTimer = baseGap + challengeRand(0, 0.45);
      }
- 
+
      // gravity & movement
      const wasAirborne = !deer.onGround;
      deer.vy += 1650 * dt;
      deer.y += deer.vy * dt;
- 
+
      // landing
      if (deer.y + deer.h >= groundY){
 -      if (wasAirborne) spawnDust(deer.x + deer.w*0.4, groundY - 2);
@@ -1138,17 +1139,17 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
        if (deer.onGround) { coyoteTimer = COYOTE_TIME; }
        deer.onGround = false;
      }
- 
+
      // if we have a queued jump and conditions allow, jump now
      tryPerformJump();
- 
+
      // projectiles
      for (let i=obstacles.length-1; i>=0; i--){
        const o = obstacles[i];
        o.x += o.vx * dt;
        if (o.x + (o.w || o.r*2) < -40) obstacles.splice(i,1);
      }
- 
+
 +    // companion deer unlock (visual reward)
 +    if (!companion.active && score >= 1200){
 +      companion.active = true;
@@ -1200,12 +1201,12 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 +
      // particles
      updateDust(dt);
- 
+
      // score & collision
      score += Math.floor(220 * dt);
 -    scoreEl.textContent = 'Score: ' + score;
 +    scoreEl.textContent = 'Score: ' + score + '  •  Combo x' + nearMissMultiplier.toFixed(1);
- 
+
      const deerBox = {x:deer.x+2, y:deer.y+2, w:deer.w-4, h:deer.h-4};
      for (const o of obstacles){
        if (o.type === 'bullet'){
@@ -1218,7 +1219,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
        }
      }
    }
- 
+
    function draw(){
      ctx.clearRect(0,0,W,H);
 -
@@ -1232,7 +1233,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
 -    }
 -    ctx.globalAlpha = 1;
 +    drawSky();
- 
+
      drawGround();
 +    drawCompanionDeer();
      drawDeer();
@@ -1240,7 +1241,7 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      for (const o of obstacles) drawObstacle(o);
      drawDust();
    }
- 
+
    function loop(tNow){
      if (!running){ return; }
      const dt = Math.min((tNow - tPrev)/1000, 0.033);
@@ -1249,11 +1250,11 @@ index c80611d69af07783fc1781e79d814bceeb967b9b..f3f6ff59eddadee81fdedba16435d075
      draw();
      if (!gameOver) requestAnimationFrame(loop);
    }
- 
+
    // init
 +  updateGearLabel();
    showTitle();
- 
+
  })();
  </script>
  </body>
