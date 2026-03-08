@@ -222,7 +222,6 @@
   let challengeProfile = DEFAULT_CHALLENGE;
   let soundtrackTick = 0;
   let startGraceTimer = 0;
-  let obstacleCycle = 0;
   let audioCtx = null;
   let masterGain = null;
   let biomeIndex = 0;
@@ -370,7 +369,6 @@
       companion.active = false; companion.x = -120;
       nearMissMultiplier = 1; nearMissTimer = 0;
       startGraceTimer = 1.35;
-      obstacleCycle = 0;
       cleanLandingStreak = 0; objectivesCompleted = 0; goalTarget = challengeProfile?.goal || DEFAULT_CHALLENGE.goal;
       biomeIndex = 0;
       eventTextEl.style.opacity = '0';
@@ -481,27 +479,6 @@
     }
   }
   function spawnObstacle(){
-    obstacleCycle += 1;
-
-    const activeLog = obstacles.some((o) => o.type === 'log' && (o.x + o.w) > deer.x - 30);
-    const activeProjectile = obstacles.some((o) => o.type !== 'log' && (o.x + (o.w || o.r*2)) > deer.x - 20);
-
-    // Every 3rd spawn is a ground log to break up projectile pressure.
-    if (obstacleCycle % 3 === 0){
-      // wait for projectile lane to clear so logs are a clean jump moment
-      if (activeProjectile) return false;
-
-      const w = 52, h = 18;
-      obstacles.push({
-        type:'log', x: W + 20, y: groundY - h, w, h,
-        vx: -(speed * 0.72 + challengeRand(-18, 22)), nearAwarded:true
-      });
-      return true;
-    }
-
-    // don't stack arrows/bullets on top of a live log section
-    if (activeLog) return false;
-
     const origin = weaponMuzzle(hunter);
     const type = (hunter.weapon === 'bow') ? 'arrow' : 'bullet';
     hunter.fireTimer = 0.18;
@@ -519,8 +496,8 @@
         vx: -(speed + challengeRand(60, 120)), nearAwarded:false
       });
     }
-    return true;
   }
+
   function weaponMuzzle(h){
     if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };         // left-release
     return { x: h.x - 6, y: h.y + 24 }; // rifle muzzle to the LEFT
@@ -948,32 +925,6 @@
 
   // Upgraded arrows & bullets
   function drawObstacle(o){
-    if (o.type === 'log'){
-      const bark = ctx.createLinearGradient(o.x, o.y, o.x, o.y + o.h);
-      bark.addColorStop(0, '#8e5b32');
-      bark.addColorStop(1, '#6b4022');
-      ctx.fillStyle = bark;
-      roundedRect(o.x, o.y, o.w, o.h, 8, true);
-
-      // subtle bark lines
-      ctx.strokeStyle = 'rgba(45,25,12,0.45)';
-      ctx.lineWidth = 1.2;
-      for (let i=0;i<4;i++){
-        const y = o.y + 3 + i*4;
-        ctx.beginPath();
-        ctx.moveTo(o.x + 6, y);
-        ctx.lineTo(o.x + o.w - 6, y + (i%2 ? 1 : -1));
-        ctx.stroke();
-      }
-
-      // log rings
-      ctx.strokeStyle = '#c89a63';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.arc(o.x + 7, o.y + o.h/2, 4, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(o.x + o.w - 7, o.y + o.h/2, 4, 0, Math.PI*2); ctx.stroke();
-      return;
-    }
-
     if (o.type === 'arrow'){
       // high-contrast arrow (no hard outlines)
       const shaftY = o.y + o.h/3;
@@ -1084,9 +1035,9 @@
     // spawn cadence
     spawnTimer -= dt;
     if (spawnTimer <= 0){
-      const spawned = spawnObstacle();
+      spawnObstacle();
       const baseGap = Math.max(0.70, 1.5 - speed/600);
-      spawnTimer = spawned ? (baseGap + challengeRand(0, 0.45)) : 0.16;
+      spawnTimer = baseGap + challengeRand(0, 0.45);
     }
 
     // gravity & movement
@@ -1197,13 +1148,10 @@
         if (o.type === 'bullet'){
           const bb = {x:o.x, y:o.y, w:o.r*2, h:o.r*2};
           if (aabb(deerBox, bb)) return endGame();
-        } else if (o.type === 'arrow') {
+        } else {
           // include tip reach
           const ab = {x:o.x - 2, y:o.y, w:o.w + o.tip, h:o.h};
           if (aabb(deerBox, ab)) return endGame();
-        } else {
-          const lb = {x:o.x, y:o.y, w:o.w, h:o.h};
-          if (aabb(deerBox, lb)) return endGame();
         }
       }
     }
