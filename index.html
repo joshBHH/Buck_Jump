@@ -483,15 +483,24 @@
   function spawnObstacle(){
     obstacleCycle += 1;
 
+    const activeLog = obstacles.some((o) => o.type === 'log' && (o.x + o.w) > deer.x - 30);
+    const activeProjectile = obstacles.some((o) => o.type !== 'log' && (o.x + (o.w || o.r*2)) > deer.x - 20);
+
     // Every 3rd spawn is a ground log to break up projectile pressure.
     if (obstacleCycle % 3 === 0){
+      // wait for projectile lane to clear so logs are a clean jump moment
+      if (activeProjectile) return false;
+
       const w = 52, h = 18;
       obstacles.push({
         type:'log', x: W + 20, y: groundY - h, w, h,
         vx: -(speed * 0.72 + challengeRand(-18, 22)), nearAwarded:true
       });
-      return;
+      return true;
     }
+
+    // don't stack arrows/bullets on top of a live log section
+    if (activeLog) return false;
 
     const origin = weaponMuzzle(hunter);
     const type = (hunter.weapon === 'bow') ? 'arrow' : 'bullet';
@@ -510,6 +519,7 @@
         vx: -(speed + challengeRand(60, 120)), nearAwarded:false
       });
     }
+    return true;
   }
   function weaponMuzzle(h){
     if (h.weapon === 'bow') return { x: h.x + 6,  y: h.y + 28 };         // left-release
@@ -1074,9 +1084,9 @@
     // spawn cadence
     spawnTimer -= dt;
     if (spawnTimer <= 0){
-      spawnObstacle();
+      const spawned = spawnObstacle();
       const baseGap = Math.max(0.70, 1.5 - speed/600);
-      spawnTimer = baseGap + challengeRand(0, 0.45);
+      spawnTimer = spawned ? (baseGap + challengeRand(0, 0.45)) : 0.16;
     }
 
     // gravity & movement
