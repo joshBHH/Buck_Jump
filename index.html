@@ -641,23 +641,80 @@
   function drawCompanionDeer(){
     if (!companion.active) return;
     const x = companion.x, y = companion.y, w = companion.w, h = companion.h;
+    const sway = Math.sin(performance.now()*0.02) * 2.2;
     ctx.save();
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = isDayScene ? '#b48a63' : '#9b7fbc';
-    roundedRect(x+6, y+8, w-12, h-12, 8, true);
+    ctx.globalAlpha = 0.82;
+
+    // body + stretch similar to main deer
+    ctx.translate(x + w/2, y + h/2);
+    ctx.scale(1.02, 0.98);
+    ctx.translate(-(x + w/2), -(y + h/2));
+
+    const coat = isDayScene ? '#9c7654' : '#8b6a9f';
+    const coatHead = isDayScene ? '#b48d68' : '#a985c2';
+    const muzzle = isDayScene ? '#7b5f47' : '#6b4f84';
+    const leg = isDayScene ? '#6f553f' : '#624b78';
+
+    // torso
+    ctx.fillStyle = coat;
+    roundedRect(x+7, y+9, w-14, h-14, 9, true);
+
+    // underside
     ctx.fillStyle = '#efe6d8';
-    roundedRect(x+14, y+18, w-30, 10, 5, true);
-    ctx.fillStyle = '#c8a179';
-    roundedRect(x + w - 28, y + 2, 18, 14, 5, true);
+    roundedRect(x+15, y+20, w-32, 10, 5, true);
+
+    // neck + head
+    ctx.fillStyle = coat;
+    roundedRect(x + w - 29, y + 7, 12, 18, 5, true);
+    ctx.fillStyle = coatHead;
+    roundedRect(x + w - 27, y + 1, 18, 14, 5, true);
+
+    // muzzle + eye
+    ctx.fillStyle = muzzle;
+    roundedRect(x + w - 13, y + 5, 10, 7, 3, true);
+    ctx.fillStyle = '#0b1b24';
+    ctx.beginPath(); ctx.arc(x + w - 10, y + 5, 1.8, 0, Math.PI*2); ctx.fill();
+
+    // ear
+    ctx.fillStyle = coatHead;
+    ctx.beginPath();
+    ctx.moveTo(x + w - 22, y - 2);
+    ctx.lineTo(x + w - 12, y - 11);
+    ctx.lineTo(x + w - 10, y + 2);
+    ctx.closePath(); ctx.fill();
+
+    // antlers (smaller than main deer)
     ctx.strokeStyle = '#e9dec3';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + w - 18, y + 2); ctx.lineTo(x + w - 30, y - 14);
-    ctx.moveTo(x + w - 12, y + 2); ctx.lineTo(x + w + 2, y - 14);
+    ctx.moveTo(x + w - 20, y + 1); ctx.lineTo(x + w - 30, y - 14);
+    ctx.moveTo(x + w - 13, y + 1); ctx.lineTo(x + w - 1, y - 14);
+    ctx.moveTo(x + w - 27, y - 10); ctx.lineTo(x + w - 34, y - 15);
+    ctx.moveTo(x + w - 5,  y - 10); ctx.lineTo(x + w + 2,  y - 15);
     ctx.stroke();
-    ctx.strokeStyle = '#7c5e44';
-    ctx.lineWidth = 3;
-    for (const lx of [x+10, x+20, x+34, x+44]){ ctx.beginPath(); ctx.moveTo(lx, y+h-12); ctx.lineTo(lx, y+h+8); ctx.stroke(); }
+
+    // tail
+    ctx.fillStyle = '#efe6d8';
+    roundedRect(x + 6, y + 7, 7, 9, 3, true);
+
+    // legs with subtle run sway
+    const legY = y + h - 2;
+    ctx.strokeStyle = leg;
+    ctx.lineWidth = 3.2;
+    for (let i=0;i<4;i++){
+      const lx = x + [10, 20, 34, 44][i] + ((i%2===0) ? sway : -sway);
+      ctx.beginPath();
+      ctx.moveTo(lx, legY-12);
+      ctx.lineTo(lx, legY+8);
+      ctx.stroke();
+    }
+
+    // shadow
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(x + w/2, y + h + 8, 18, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
     ctx.restore();
   }
 
