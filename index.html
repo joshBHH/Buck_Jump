@@ -57,10 +57,20 @@
   .muted { opacity:.8; }
   .mini { font-size:12px; opacity:.8; }
   .panelBtns { display:flex; gap:8px; margin-top:8px; }
+  .eventText {
+    position:absolute; left:50%; top:52px; transform:translateX(-50%) translateY(-4px);
+    color:#dff6ff; font-weight:800; font-size: clamp(14px, 2.2vw, 22px);
+    text-shadow:0 3px 14px rgba(0,0,0,.65); opacity:0; pointer-events:none;
+    transition: opacity .18s ease, transform .18s ease; z-index:7;
+  }
 
   @media (max-width: 980px){
     .stage { flex-direction:column; align-items:center; }
     .sidePanel { width: min(92vw, 340px); }
+    canvas {
+      width: min(96vw, 860px);
+      aspect-ratio: 5 / 3;
+    }
   }
 </style>
 </head>
@@ -75,6 +85,8 @@
         <div id="gear">Jumps: 0 • Gear: Starter</div>
         <div id="hiscore">Best: 0</div>
       </div>
+
+      <div class="eventText" id="eventText" aria-live="polite"></div>
 
       <div class="centerMsg" id="centerMsg">
         <div class="panel" id="panelContent" style="background: rgba(10,20,26,.85); border:1px solid rgba(255,255,255,.15); border-radius:16px; padding:16px; max-width:min(92vw, 520px); box-shadow: 0 8px 30px rgba(0,0,0,.5);">
@@ -118,6 +130,7 @@
   const gearEl = document.getElementById('gear');
   const centerMsg = document.getElementById('centerMsg');
   const panelContent = document.getElementById('panelContent');
+  const eventTextEl = document.getElementById('eventText');
 
   const startBtn = document.getElementById('startBtn');
   const pauseBtn = document.getElementById('pauseBtn');
@@ -197,6 +210,25 @@
   let tPrev = 0, score = 0, speed = 300, spawnTimer = 0;
   let successfulJumps = 0;
   let gearTier = 0;
+  let nearMissMultiplier = 1;
+  let nearMissTimer = 0;
+  let cleanLandingStreak = 0;
+  let objectivesCompleted = 0;
+  let goalTarget = 10;
+  let eventTextTimer = 0;
+  let challengeRng = null;
+  let challengeSeed = 0;
+  let soundtrackTick = 0;
+  let audioCtx = null;
+  let masterGain = null;
+  let biomeIndex = 0;
+
+  const BIOMES = [
+    { name:'Forest', dayGround:'#4d7c3a', nightGround:'#25404d', dayHill:'#3e6530', nightHill:'#1f3541', treeDay:'#567a42', treeNight:'#2a4737', bushDay:'#2f6a2f', bushNight:'#294a38', grassDay:'#78b85d', grassNight:'#4d7f61' },
+    { name:'Autumn', dayGround:'#87552f', nightGround:'#4e3020', dayHill:'#744623', nightHill:'#3b2617', treeDay:'#9f6a34', treeNight:'#5e3a23', bushDay:'#af5f2f', bushNight:'#613426', grassDay:'#d18a41', grassNight:'#7f4e2f' },
+    { name:'Snow', dayGround:'#c7d4dd', nightGround:'#8f9ca9', dayHill:'#adbcc8', nightHill:'#768394', treeDay:'#8da1af', treeNight:'#5f7280', bushDay:'#9cb0be', bushNight:'#6d818f', grassDay:'#e7f1f8', grassNight:'#aab8c4' },
+    { name:'Dusk', dayGround:'#5e4f86', nightGround:'#302945', dayHill:'#4b3f6f', nightHill:'#261f38', treeDay:'#6e5ca2', treeNight:'#3d2f61', bushDay:'#6b4a9a', bushNight:'#3f2e61', grassDay:'#9e84d1', grassNight:'#5a4a82' }
+  ];
 
   const GEAR_TIERS = [
     { jumps: 0, label: 'Rookie Set' },
@@ -208,7 +240,7 @@
 
   // Weapon swap rates (seconds)
   const SWAP_MIN = 4, SWAP_MAX = 7;
-  let nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+  let nextSwapIn = 0;
 
   // Deer (longer legs & bigger rack)
   const deer = { x: 90, y: groundY - 48, w: 60, h: 48, vy: 0, onGround: true, jumpedThisAir: false };
@@ -245,10 +277,10 @@
   function updateGearLabel(){
     gearTier = currentGearTier();
     const boostTag = antlerBoostTimer > 0 ? ` • Antler Rush ${Math.ceil(antlerBoostTimer)}s` : '';
-    gearEl.textContent = `Jumps: ${successfulJumps} • Gear: ${GEAR_TIERS[gearTier].label}${boostTag}`;
+    gearEl.textContent = `Jumps: ${successfulJumps} • x${nearMissMultiplier.toFixed(1)} • Goal ${cleanLandingStreak}/${goalTarget} • Obj ${objectivesCompleted} • ${GEAR_TIERS[gearTier].label}${boostTag}`;
   }
 
-  function requestJump(){ jumpBufferTimer = JUMP_BUFFER; }
+  function requestJump(){ ensureAudio(); jumpBufferTimer = JUMP_BUFFER; }
   function tryPerformJump(){
     if ((deer.onGround || coyoteTimer > 0) && jumpBufferTimer > 0){
       deer.vy = -560;
@@ -303,6 +335,7 @@
       <h1 style="margin:0 0 12px 0; font-size:clamp(22px,4vw,36px);">Whitetail Runner</h1>
       <p class="muted">Press <b>Space</b>/<b>↑</b> or <b>Tap anywhere</b> to jump</p>
       <p class="muted">Avoid the hunter's <b>arrows</b> and <b>bullets</b>. Speed ramps up!</p>
+      <p class="mini muted">Daily Challenge uses a fixed run pattern for all players each day.</p>
       <div class="btnRow">
         <button class="btn" id="startBtnX">Start</button>
         <button class="btn" id="restartBtnX">Restart</button>
@@ -320,12 +353,19 @@
       score = 0; speed = 300; spawnTimer = 0;
       deer.x = 90; deer.y = groundY - deer.h; deer.vy = 0; deer.onGround = true;
       hunter.weapon = 'bow'; hunter.fireTimer = 0;
-      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+      challengeSeed = challengeDateSeed();
+      challengeRng = mulberry32(challengeSeed);
+      nextSwapIn = challengeRand(SWAP_MIN, SWAP_MAX);
       jumpBufferTimer = 0; coyoteTimer = 0;
       successfulJumps = 0; gearTier = 0;
       deer.jumpedThisAir = false;
       antlerBoostTimer = 0;
       companion.active = false; companion.x = -120;
+      nearMissMultiplier = 1; nearMissTimer = 0;
+      cleanLandingStreak = 0; objectivesCompleted = 0; goalTarget = 10;
+      biomeIndex = 0;
+      eventTextEl.style.opacity = '0';
+      showEventText(`Daily Challenge #${challengeSeed}`, '#8ef6ff');
       updateGearLabel();
       gameOver = false;
     }
@@ -362,13 +402,58 @@
 
   // Helpers
   function rand(a,b){ return Math.random()*(b-a)+a; }
+  function mulberry32(a){
+    return function(){
+      let t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function challengeRand(a,b){ return (challengeRng ? challengeRng() : Math.random()) * (b-a) + a; }
+  function challengeDateSeed(){
+    const d = new Date();
+    return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}`);
+  }
+  function showEventText(msg, color='#dff6ff'){
+    eventTextEl.textContent = msg;
+    eventTextEl.style.color = color;
+    eventTextEl.style.opacity = '1';
+    eventTextEl.style.transform = 'translateX(-50%) translateY(0px)';
+    eventTextTimer = 1.1;
+  }
+  function ensureAudio(){
+    if (audioCtx){
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return;
+    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.035;
+    masterGain.connect(audioCtx.destination);
+  }
+  function playTone(freq, dur, type='sine', vol=1){
+    if (!audioCtx || !masterGain) return;
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.12*vol, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
 
   // Weapon logic
   function maybeSwapWeapon(dt){
     nextSwapIn -= dt;
     if (nextSwapIn <= 0){
       hunter.weapon = (hunter.weapon === 'bow') ? 'rifle' : 'bow';
-      nextSwapIn = rand(SWAP_MIN, SWAP_MAX);
+      nextSwapIn = challengeRand(SWAP_MIN, SWAP_MAX);
     }
   }
   function spawnObstacle(){
@@ -380,13 +465,13 @@
       const h = 12, w = 48; // sleeker, longer arrow
       obstacles.push({
         type, x: origin.x - w, y: origin.y - 6, w, h,
-        vx: -(speed + rand(0, 40)), tip: 14
+        vx: -(speed + challengeRand(0, 40)), tip: 14, nearAwarded:false
       });
     } else {
-      const size = 12, spray = rand(-8, 2);
+      const size = 12, spray = challengeRand(-8, 2);
       obstacles.push({
         type, x: origin.x - size, y: origin.y + spray, w:size, h:size, r:size/2,
-        vx: -(speed + rand(60, 120))
+        vx: -(speed + challengeRand(60, 120)), nearAwarded:false
       });
     }
   }
@@ -435,8 +520,9 @@
   }
 
   function drawGround(){
-    const groundColor = isDayScene ? '#4d7c3a' : '#25404d';
-    const hillColor = isDayScene ? '#3e6530' : '#1f3541';
+    const biome = BIOMES[biomeIndex % BIOMES.length];
+    const groundColor = isDayScene ? biome.dayGround : biome.nightGround;
+    const hillColor = isDayScene ? biome.dayHill : biome.nightHill;
 
     // rolling hill strip to break up projectile contrast
     ctx.fillStyle = hillColor;
@@ -456,7 +542,7 @@
     for (let i=0;i<7;i++){
       const tx = i*180 - treeShift;
       const ty = groundY - 48;
-      ctx.fillStyle = isDayScene ? '#567a42' : '#2a4737';
+      ctx.fillStyle = isDayScene ? biome.treeDay : biome.treeNight;
       ctx.fillRect(tx + 20, ty + 18, 8, 28);
       ctx.beginPath();
       ctx.moveTo(tx - 8, ty + 24);
@@ -477,12 +563,12 @@
     for (let i=0;i<10;i++){
       const bx = i*100 - bushShift;
       const by = groundY - 6;
-      ctx.fillStyle = isDayScene ? '#2f6a2f' : '#294a38';
+      ctx.fillStyle = isDayScene ? biome.bushDay : biome.bushNight;
       ctx.beginPath(); ctx.arc(bx + 18, by + 8, 10, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(bx + 30, by + 6, 12, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(bx + 44, by + 8, 10, 0, Math.PI*2); ctx.fill();
 
-      ctx.strokeStyle = isDayScene ? '#78b85d' : '#4d7f61';
+      ctx.strokeStyle = isDayScene ? biome.grassDay : biome.grassNight;
       ctx.lineWidth = 1.5;
       for (let g=0; g<4; g++){
         const gx = bx + 8 + g*12;
@@ -894,6 +980,22 @@
     if (jumpBufferTimer > 0) jumpBufferTimer -= dt;
     if (coyoteTimer > 0) coyoteTimer -= dt;
 
+    if (nearMissTimer > 0){
+      nearMissTimer -= dt;
+      if (nearMissTimer <= 0 && nearMissMultiplier > 1){
+        nearMissMultiplier = 1;
+        updateGearLabel();
+      }
+    }
+
+    if (eventTextTimer > 0){
+      eventTextTimer -= dt;
+      if (eventTextTimer <= 0){
+        eventTextEl.style.opacity = '0';
+        eventTextEl.style.transform = 'translateX(-50%) translateY(-4px)';
+      }
+    }
+
     if (antlerBoostTimer > 0){
       antlerBoostTimer -= dt;
       if (antlerBoostTimer <= 0) { antlerBoostTimer = 0; updateGearLabel(); }
@@ -908,7 +1010,7 @@
     if (spawnTimer <= 0){
       spawnObstacle();
       const baseGap = Math.max(0.70, 1.5 - speed/600);
-      spawnTimer = baseGap + Math.random()*0.45;
+      spawnTimer = baseGap + challengeRand(0, 0.45);
     }
 
     // gravity & movement
@@ -925,6 +1027,14 @@
           deer.jumpedThisAir = false;
           if (successfulJumps % 6 === 0){
             antlerBoostTimer = 8;
+            showEventText('Antler Rush!', '#f4e2b8');
+          }
+          cleanLandingStreak += 1;
+          if (cleanLandingStreak >= goalTarget){
+            objectivesCompleted += 1;
+            score += 320;
+            showEventText('Objective Complete +320', '#8ef2b4');
+            cleanLandingStreak = 0;
           }
           updateGearLabel();
         }
@@ -957,12 +1067,49 @@
       if (companion.x > W + 80) companion.x = -140;
     }
 
+    // near miss combo window
+    for (const o of obstacles){
+      if (o.nearAwarded) continue;
+      const ow = o.w || o.r*2;
+      const oh = o.h || o.r*2;
+      const passed = (o.x + ow < deer.x) && (o.x + ow > deer.x - 20);
+      const closeY = Math.abs((o.y + oh/2) - (deer.y + deer.h/2)) < 56;
+      if (passed && closeY){
+        o.nearAwarded = true;
+        nearMissMultiplier = Math.min(5, nearMissMultiplier + 0.25);
+        nearMissTimer = 3.2;
+        const bonus = Math.floor(60 * nearMissMultiplier);
+        score += bonus;
+        cleanLandingStreak = 0;
+        showEventText(`Near Miss +${bonus} (x${nearMissMultiplier.toFixed(1)})`, '#9be8ff');
+        updateGearLabel();
+      }
+    }
+
+    // biome shifts every score band
+    const nextBiome = Math.floor(score / 1800) % BIOMES.length;
+    if (nextBiome !== biomeIndex){
+      biomeIndex = nextBiome;
+      showEventText(`${BIOMES[biomeIndex].name} Biome`, '#ffd8a8');
+    }
+
+    // adaptive soundtrack layers
+    soundtrackTick -= dt;
+    if (soundtrackTick <= 0){
+      const beatGap = Math.max(0.18, 0.52 - speed/1300);
+      soundtrackTick = beatGap;
+      const baseFreq = 150 + nearMissMultiplier * 16;
+      playTone(baseFreq, 0.09, 'triangle', 0.6);
+      if (speed > 370) playTone(baseFreq*1.9, 0.06, 'square', 0.22);
+      if (speed > 500) playTone(80, 0.04, 'sine', 0.45);
+    }
+
     // particles
     updateDust(dt);
 
     // score & collision
     score += Math.floor(220 * dt);
-    scoreEl.textContent = 'Score: ' + score;
+    scoreEl.textContent = 'Score: ' + score + '  •  Combo x' + nearMissMultiplier.toFixed(1);
 
     const deerBox = {x:deer.x+2, y:deer.y+2, w:deer.w-4, h:deer.h-4};
     for (const o of obstacles){
